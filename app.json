@@ -1,0 +1,28 @@
+{
+  "expo": {
+    "name": "攒钱记账",
+    "slug": "money",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "money",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.money.app"
+    },
+    "android": {
+      "package": "com.money.app"
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "static"
+    },
+    "plugins": [
+      "expo-router"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}
