@@ -5,3 +5,10 @@
 expo-env.d.ts
 # @end expo-cli
 node_modules
+
+# Java/Maven
+backend/target/
+backend/*.iml
+backend/.idea/
+backend/.mvn/
+backend/uploads/
