@@ -8,11 +8,15 @@ import com.zanqian.savemoney.entity.Budget;
 import com.zanqian.savemoney.entity.Category;
 import com.zanqian.savemoney.repository.BudgetRepository;
 import com.zanqian.savemoney.repository.CategoryRepository;
+import com.zanqian.savemoney.repository.RecordRepository;
 import com.zanqian.savemoney.service.BudgetService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.DayOfWeek;
+import java.time.LocalDate;
+import java.time.temporal.TemporalAdjusters;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -24,10 +28,13 @@ public class BudgetServiceImpl implements BudgetService {
 
     private final BudgetRepository budgetRepository;
     private final CategoryRepository categoryRepository;
+    private final RecordRepository recordRepository;
 
-    public BudgetServiceImpl(BudgetRepository budgetRepository, CategoryRepository categoryRepository) {
+    public BudgetServiceImpl(BudgetRepository budgetRepository, CategoryRepository categoryRepository,
+                             RecordRepository recordRepository) {
         this.budgetRepository = budgetRepository;
         this.categoryRepository = categoryRepository;
+        this.recordRepository = recordRepository;
     }
 
     @Override
@@ -38,7 +45,7 @@ public class BudgetServiceImpl implements BudgetService {
         } else {
             budgets = budgetRepository.findByUserIdAndBookType(userId, bookType);
         }
-        return budgets.stream().map(this::toMap).collect(Collectors.toList());
+        return budgets.stream().map(b -> toMap(b, userId)).collect(Collectors.toList());
     }
 
     @Override
@@ -54,7 +61,7 @@ public class BudgetServiceImpl implements BudgetService {
         budget.setAlertThreshold(request.getAlertThreshold());
         budget.setIsAlertEnabled(request.getIsAlertEnabled() != null ? request.getIsAlertEnabled() : false);
         budgetRepository.save(budget);
-        return toMap(budget);
+        return toMap(budget, userId);
     }
 
     @Override
@@ -69,7 +76,7 @@ public class BudgetServiceImpl implements BudgetService {
         if (request.getAlertThreshold() != null) budget.setAlertThreshold(request.getAlertThreshold());
         if (request.getIsAlertEnabled() != null) budget.setIsAlertEnabled(request.getIsAlertEnabled());
         budgetRepository.save(budget);
-        return toMap(budget);
+        return toMap(budget, userId);
     }
 
     @Override
@@ -83,7 +90,7 @@ public class BudgetServiceImpl implements BudgetService {
         budgetRepository.delete(budget);
     }
 
-    private Map<String, Object> toMap(Budget b) {
+    private Map<String, Object> toMap(Budget b, String userId) {
         Map<String, Object> map = new LinkedHashMap<>();
         map.put("id", b.getId());
         map.put("categoryId", b.getCategoryId());
@@ -105,11 +112,47 @@ public class BudgetServiceImpl implements BudgetService {
         }
 
         map.put("amount", b.getAmount());
-        map.put("usedAmount", b.getUsedAmount());
+        map.put("usedAmount", calculateUsedAmount(b, userId));
         map.put("period", b.getPeriod());
         map.put("bookType", b.getBookType());
         map.put("alertThreshold", b.getAlertThreshold());
         map.put("isAlertEnabled", b.getIsAlertEnabled());
         return map;
+    }
+
+    private BigDecimal calculateUsedAmount(Budget budget, String userId) {
+        LocalDate[] dateRange = getPeriodDateRange(budget.getPeriod());
+        LocalDate startDate = dateRange[0];
+        LocalDate endDate = dateRange[1];
+
+        if (budget.getCategoryId() != null) {
+            return recordRepository.sumExpenseByBookTypeAndCategoryAndDateBetween(
+                    userId, budget.getBookType(), budget.getCategoryId(), startDate, endDate);
+        } else {
+            return recordRepository.sumAmountByUserIdAndBookTypeAndTypeAndDateBetween(
+                    userId, budget.getBookType(), "expense", startDate, endDate);
+        }
+    }
+
+    private LocalDate[] getPeriodDateRange(String period) {
+        LocalDate today = LocalDate.now();
+        LocalDate startDate;
+        LocalDate endDate;
+
+        switch (period != null ? period : "monthly") {
+            case "weekly":
+                startDate = today.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
+                endDate = startDate.plusDays(6);
+                break;
+            case "yearly":
+                startDate = today.with(TemporalAdjusters.firstDayOfYear());
+                endDate = today.with(TemporalAdjusters.lastDayOfYear());
+                break;
+            default: // monthly
+                startDate = today.with(TemporalAdjusters.firstDayOfMonth());
+                endDate = today.with(TemporalAdjusters.lastDayOfMonth());
+                break;
+        }
+        return new LocalDate[]{startDate, endDate};
     }
 }

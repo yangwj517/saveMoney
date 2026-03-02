@@ -359,4 +359,158 @@ class SaveMoneyApplicationTests {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(20002));
     }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void testBudgetUsedAmountCalculation() throws Exception {
+        // Setup: login a user
+        String phone = "13800138010";
+        mockMvc.perform(post("/auth/sms/send")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"phone\":\"" + phone + "\"}"))
+                .andExpect(status().isOk());
+
+        SmsCode smsCode = smsCodeRepository.findFirstByPhoneAndUsedFalseOrderByExpireAtDesc(phone).orElseThrow();
+
+        MvcResult loginResult = mockMvc.perform(post("/auth/login/phone")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"phone\":\"" + phone + "\",\"code\":\"" + smsCode.getCode() + "\"}"))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        Map<String, Object> loginResponse = objectMapper.readValue(
+                loginResult.getResponse().getContentAsString(), Map.class);
+        Map<String, Object> data = (Map<String, Object>) loginResponse.get("data");
+        String token = (String) data.get("token");
+
+        // Create account and category
+        MvcResult accResult = mockMvc.perform(post("/accounts")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"现金\",\"balance\":10000.00,\"icon\":\"cash\",\"color\":\"#4CAF50\",\"bookType\":\"personal\",\"isDefault\":true}"))
+                .andExpect(status().isOk())
+                .andReturn();
+        Map<String, Object> accData = (Map<String, Object>) ((Map<String, Object>) objectMapper.readValue(
+                accResult.getResponse().getContentAsString(), Map.class)).get("data");
+        String accountId = (String) accData.get("id");
+
+        MvcResult catResult = mockMvc.perform(post("/categories")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"餐饮\",\"icon\":\"food\",\"color\":\"#FF9800\",\"type\":\"expense\",\"bookType\":\"personal\",\"order\":1}"))
+                .andExpect(status().isOk())
+                .andReturn();
+        Map<String, Object> catData = (Map<String, Object>) ((Map<String, Object>) objectMapper.readValue(
+                catResult.getResponse().getContentAsString(), Map.class)).get("data");
+        String categoryId = (String) catData.get("id");
+
+        // Create budget for this category
+        MvcResult budgetResult = mockMvc.perform(post("/budgets")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"categoryId\":\"" + categoryId + "\",\"amount\":3000.00,\"period\":\"monthly\",\"bookType\":\"personal\",\"alertThreshold\":80,\"isAlertEnabled\":true}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.usedAmount").value(0))
+                .andReturn();
+
+        // Create expense records in the current month
+        String today = java.time.LocalDate.now().toString();
+        mockMvc.perform(post("/records")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"amount\":100.50,\"type\":\"expense\",\"categoryId\":\"" + categoryId +
+                                "\",\"accountId\":\"" + accountId +
+                                "\",\"bookType\":\"personal\",\"date\":\"" + today + "\",\"note\":\"早餐\",\"images\":[]}"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/records")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"amount\":200.00,\"type\":\"expense\",\"categoryId\":\"" + categoryId +
+                                "\",\"accountId\":\"" + accountId +
+                                "\",\"bookType\":\"personal\",\"date\":\"" + today + "\",\"note\":\"午餐\",\"images\":[]}"))
+                .andExpect(status().isOk());
+
+        // Verify budget usedAmount now reflects actual spending
+        mockMvc.perform(get("/budgets")
+                        .param("bookType", "personal")
+                        .param("period", "monthly")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data[0].usedAmount").value(300.50));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void testNullFieldsPresent() throws Exception {
+        // Setup: login a user
+        String phone = "13800138011";
+        mockMvc.perform(post("/auth/sms/send")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"phone\":\"" + phone + "\"}"))
+                .andExpect(status().isOk());
+
+        SmsCode smsCode = smsCodeRepository.findFirstByPhoneAndUsedFalseOrderByExpireAtDesc(phone).orElseThrow();
+
+        MvcResult loginResult = mockMvc.perform(post("/auth/login/phone")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"phone\":\"" + phone + "\",\"code\":\"" + smsCode.getCode() + "\"}"))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        Map<String, Object> loginResponse = objectMapper.readValue(
+                loginResult.getResponse().getContentAsString(), Map.class);
+        Map<String, Object> data = (Map<String, Object>) loginResponse.get("data");
+        String token = (String) data.get("token");
+
+        // Verify user profile has null email field present
+        mockMvc.perform(get("/user/profile")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.email").value((Object) null));
+
+        // Verify category with null parentId
+        mockMvc.perform(post("/categories")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"测试分类\",\"icon\":\"test\",\"color\":\"#000000\",\"type\":\"expense\",\"bookType\":\"personal\",\"order\":1}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.parentId").value((Object) null));
+    }
+
+    @Test
+    void testAccountBookTypeValidation() throws Exception {
+        // Setup: login
+        String phone = "13800138012";
+        mockMvc.perform(post("/auth/sms/send")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"phone\":\"" + phone + "\"}"))
+                .andExpect(status().isOk());
+
+        SmsCode smsCode = smsCodeRepository.findFirstByPhoneAndUsedFalseOrderByExpireAtDesc(phone).orElseThrow();
+        MvcResult loginResult = mockMvc.perform(post("/auth/login/phone")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"phone\":\"" + phone + "\",\"code\":\"" + smsCode.getCode() + "\"}"))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> loginResponse = objectMapper.readValue(
+                loginResult.getResponse().getContentAsString(), Map.class);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> data = (Map<String, Object>) loginResponse.get("data");
+        String token = (String) data.get("token");
+
+        // Try creating account without bookType - should fail validation
+        mockMvc.perform(post("/accounts")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"测试账户\",\"balance\":100.00,\"icon\":\"cash\",\"color\":\"#000000\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(10001));
+    }
 }

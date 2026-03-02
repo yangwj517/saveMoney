@@ -11,6 +11,7 @@ public class AccountRequest {
     private BigDecimal balance;
     private String icon;
     private String color;
+    @NotBlank(message = "账本类型不能为空")
     private String bookType;
     private Boolean isDefault;
 }
