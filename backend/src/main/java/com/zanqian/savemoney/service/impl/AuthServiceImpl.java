@@ -38,10 +38,12 @@ public class AuthServiceImpl implements AuthService {
     private final JwtUtil jwtUtil;
 
     /** 短信验证码过期时间（秒），从配置文件注入 */
-    @Value("${app.sms.expire-seconds}")
+    @Value("${app.sms.expire-seconds:300}")
     private int smsExpireSeconds;
 
-    public AuthServiceImpl(SmsCodeRepository smsCodeRepository, UserRepository userRepository, JwtUtil jwtUtil) {
+    public AuthServiceImpl(SmsCodeRepository smsCodeRepository,
+                           UserRepository userRepository,
+                           JwtUtil jwtUtil) {
         this.smsCodeRepository = smsCodeRepository;
         this.userRepository = userRepository;
         this.jwtUtil = jwtUtil;
@@ -61,6 +63,9 @@ public class AuthServiceImpl implements AuthService {
     @Override
     @Transactional
     public Map<String, Object> sendSmsCode(String phone) {
+        // 验证手机号格式
+        validatePhone(phone);
+
         // 生成6位数字验证码
         String code = String.format("%06d", SECURE_RANDOM.nextInt(1000000));
 
@@ -71,6 +76,9 @@ public class AuthServiceImpl implements AuthService {
         smsCode.setExpireAt(Instant.now().plusSeconds(smsExpireSeconds));
         smsCode.setUsed(false);
         smsCodeRepository.save(smsCode);
+
+        // TODO: 调用短信服务发送验证码
+        // smsService.sendSms(phone, code);
 
         // 返回过期时间信息
         Map<String, Object> result = new HashMap<>();
@@ -99,17 +107,15 @@ public class AuthServiceImpl implements AuthService {
     @Transactional
     public Map<String, Object> loginByPhone(String phone, String code) {
         // 验证手机号格式
-        if (phone == null || phone.length() < 7) {
-            throw new BusinessException(ErrorCode.PARAM_ERROR, "手机号格式错误");
-        }
+        validatePhone(phone);
 
         // 查询最新的未使用验证码
         SmsCode smsCode = smsCodeRepository.findFirstByPhoneAndUsedFalseOrderByExpireAtDesc(phone)
-                .orElseThrow(() -> new BusinessException(ErrorCode.PARAM_ERROR, "验证码错误"));
+                .orElseThrow(() -> new BusinessException(ErrorCode.PARAM_ERROR, "验证码错误或不存在"));
 
         // 检查验证码是否已过期
         if (smsCode.getExpireAt().isBefore(Instant.now())) {
-            throw new BusinessException(ErrorCode.PARAM_ERROR, "验证码已过期");
+            throw new BusinessException(ErrorCode.PARAM_ERROR, "验证码已过期，请重新获取");
         }
 
         // 验证码是否正确
@@ -122,21 +128,110 @@ public class AuthServiceImpl implements AuthService {
         smsCodeRepository.save(smsCode);
 
         // 查找已有用户或创建新用户
-        User user = userRepository.findByPhone(phone).orElseGet(() -> {
-            User newUser = new User();
-            newUser.setPhone(phone);
-            // 默认昵称为 "用户" + 手机号后6位
-            newUser.setNickname("用户" + phone.substring(phone.length() - 6));
-            newUser.setAvatar("https://cdn.zanqian.app/avatar/default.png");
-            return userRepository.save(newUser);
-        });
+        User user = findOrCreateUser(phone);
 
         // 生成 access token 和 refresh token
         String token = jwtUtil.generateToken(user.getId());
         String refreshToken = jwtUtil.generateRefreshToken(user.getId());
 
+        // 构建返回结果
+        return buildLoginResponse(user, token, refreshToken);
+    }
+
+    /**
+     * 刷新令牌
+     *
+     * 使用 refresh token 生成新的 access token
+     *
+     * @param refreshToken 刷新令牌
+     * @return 包含新token和过期时间的Map
+     * @throws BusinessException 如果刷新令牌已过期或无效
+     */
+    @Override
+    public Map<String, Object> refreshToken(String refreshToken) {
+        // 验证 refresh token 是否有效
+        if (!jwtUtil.validateToken(refreshToken)) {
+            throw new BusinessException(ErrorCode.TOKEN_EXPIRED, "刷新令牌已过期");
+        }
+
+        // 从 refresh token 中提取用户ID
+        String userId = jwtUtil.getUserIdFromToken(refreshToken);
+
+        // 验证用户是否存在
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.DATA_NOT_FOUND, "用户不存在"));
+
+        // 生成新的 access token
+        String newToken = jwtUtil.generateToken(userId);
+
+        // 构建返回结果
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("token", newToken);
+        result.put("expiresIn", jwtUtil.getExpiration());
+        result.put("refreshToken", refreshToken); // 返回相同的refresh token
+        return result;
+    }
+
+    /**
+     * 用户登出
+     *
+     * 注意：由于采用无状态JWT认证方式，登出在客户端处理
+     * token在过期前仍然有效，可以考虑在生产环境中维护token黑名单
+     *
+     * @param userId 用户ID
+     */
+    @Override
+    public void logout(String userId) {
+        // 在无状态JWT方式中，登出在客户端处理（删除本地存储的token）
+        // 如需实现服务端登出，可考虑维护token黑名单机制
+        // TODO: 可以记录用户登出日志
+    }
+
+    /**
+     * 验证手机号格式
+     *
+     * @param phone 手机号
+     * @throws BusinessException 如果手机号格式错误
+     */
+    private void validatePhone(String phone) {
+        if (phone == null || phone.trim().isEmpty()) {
+            throw new BusinessException(ErrorCode.PARAM_ERROR, "手机号不能为空");
+        }
+
+        // 简单的手机号格式验证（11位数字，以1开头）
+        if (!phone.matches("^1[3-9]\\d{9}$")) {
+            throw new BusinessException(ErrorCode.PARAM_ERROR, "手机号格式错误");
+        }
+    }
+
+    /**
+     * 查找或创建用户
+     *
+     * @param phone 手机号
+     * @return 用户对象
+     */
+    private User findOrCreateUser(String phone) {
+        return userRepository.findByPhone(phone).orElseGet(() -> {
+            User newUser = new User();
+            newUser.setPhone(phone);
+            // 默认昵称为 "用户" + 手机号后4位
+            newUser.setNickname("用户" + phone.substring(phone.length() - 4));
+            newUser.setAvatar("https://cdn.zanqian.app/avatar/default.png");
+            return userRepository.save(newUser);
+        });
+    }
+
+    /**
+     * 构建登录响应
+     *
+     * @param user 用户对象
+     * @param token access token
+     * @param refreshToken refresh token
+     * @return 登录响应Map
+     */
+    private Map<String, Object> buildLoginResponse(User user, String token, String refreshToken) {
         // 对手机号进行脱敏处理（隐藏中间4位）
-        String maskedPhone = phone.substring(0, 3) + "****" + phone.substring(phone.length() - 4);
+        String maskedPhone = maskPhone(user.getPhone());
 
         // 构建用户信息Map
         Map<String, Object> userData = new LinkedHashMap<>();
@@ -153,143 +248,20 @@ public class AuthServiceImpl implements AuthService {
         result.put("refreshToken", refreshToken);
         result.put("expiresIn", jwtUtil.getExpiration());
         result.put("user", userData);
+
         return result;
     }
 
     /**
-     * 刷新令牌
+     * 手机号脱敏处理
      *
-     * 使用 refresh token 生成新的 access token
-     *
-     * 流程：
-     * 1. 验证 refresh token 的有效性
-     * 2. 从 refresh token 中提取用户ID
-     * 3. 生成新的 access token
-     * 4. 返回新的token和过期时间
-     *
-     * @param refreshToken 刷新令牌
-     * @return 包含新token和过期时间的Map
-     * @throws BusinessException 如果刷新令牌已过期或无效
+     * @param phone 原始手机号
+     * @return 脱敏后的手机号（138****1234）
      */
-    @Override
-    public Map<String, Object> refreshToken(String refreshToken) {
-        // 验证 refresh token 是否有效
-        if (!jwtUtil.validateToken(refreshToken)) {
-            throw new BusinessException(ErrorCode.TOKEN_EXPIRED);
+    private String maskPhone(String phone) {
+        if (phone == null || phone.length() < 11) {
+            return phone;
         }
-
-        // 从 refresh token 中提取用户ID
-        String userId = jwtUtil.getUserIdFromToken(refreshToken);
-        // 生成新的 access token
-        String newToken = jwtUtil.generateToken(userId);
-
-        // 构建返回结果
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put("token", newToken);
-        result.put("expiresIn", jwtUtil.getExpiration());
-        return result;
-    }
-
-    /**
-     * 用户登出
-     *
-     * 注意：由于采用无状态JWT认证方式，登出在客户端处理
-     * token在过期前仍然有效，可以考虑在生产环境中维护token黑名单
-     *
-     * @param userId 用户ID
-     */
-    @Override
-    public void logout(String userId) {
-        // 在无状态JWT方式中，登出在客户端处理（删除本地存储的token）
-        // 如需实现服务端登出，可考虑维护token黑名单机制
-    }
-}
-
-        SmsCode smsCode = new SmsCode();
-        smsCode.setPhone(phone);
-        smsCode.setCode(code);
-        smsCode.setExpireAt(Instant.now().plusSeconds(smsExpireSeconds));
-        smsCode.setUsed(false);
-        smsCodeRepository.save(smsCode);
-
-        Map<String, Object> result = new HashMap<>();
-        result.put("expireIn", smsExpireSeconds);
-        return result;
-    }
-
-    @Override
-    @Transactional
-    public Map<String, Object> loginByPhone(String phone, String code) {
-        if (phone == null || phone.length() < 7) {
-            throw new BusinessException(ErrorCode.PARAM_ERROR, "手机号格式错误");
-        }
-
-        // Verify SMS code
-        SmsCode smsCode = smsCodeRepository.findFirstByPhoneAndUsedFalseOrderByExpireAtDesc(phone)
-                .orElseThrow(() -> new BusinessException(ErrorCode.PARAM_ERROR, "验证码错误"));
-
-        if (smsCode.getExpireAt().isBefore(Instant.now())) {
-            throw new BusinessException(ErrorCode.PARAM_ERROR, "验证码已过期");
-        }
-
-        if (!smsCode.getCode().equals(code)) {
-            throw new BusinessException(ErrorCode.PARAM_ERROR, "验证码错误");
-        }
-
-        // Mark code as used
-        smsCode.setUsed(true);
-        smsCodeRepository.save(smsCode);
-
-        // Find or create user
-        User user = userRepository.findByPhone(phone).orElseGet(() -> {
-            User newUser = new User();
-            newUser.setPhone(phone);
-            newUser.setNickname("用户" + phone.substring(phone.length() - 6));
-            newUser.setAvatar("https://cdn.zanqian.app/avatar/default.png");
-            return userRepository.save(newUser);
-        });
-
-        // Generate tokens
-        String token = jwtUtil.generateToken(user.getId());
-        String refreshToken = jwtUtil.generateRefreshToken(user.getId());
-
-        // Mask phone number
-        String maskedPhone = phone.substring(0, 3) + "****" + phone.substring(phone.length() - 4);
-
-        Map<String, Object> userData = new LinkedHashMap<>();
-        userData.put("id", user.getId());
-        userData.put("nickname", user.getNickname());
-        userData.put("avatar", user.getAvatar());
-        userData.put("phone", maskedPhone);
-        userData.put("email", user.getEmail());
-        userData.put("createdAt", user.getCreatedAt() != null ? user.getCreatedAt().toString() : null);
-
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put("token", token);
-        result.put("refreshToken", refreshToken);
-        result.put("expiresIn", jwtUtil.getExpiration());
-        result.put("user", userData);
-        return result;
-    }
-
-    @Override
-    public Map<String, Object> refreshToken(String refreshToken) {
-        if (!jwtUtil.validateToken(refreshToken)) {
-            throw new BusinessException(ErrorCode.TOKEN_EXPIRED);
-        }
-
-        String userId = jwtUtil.getUserIdFromToken(refreshToken);
-        String newToken = jwtUtil.generateToken(userId);
-
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put("token", newToken);
-        result.put("expiresIn", jwtUtil.getExpiration());
-        return result;
-    }
-
-    @Override
-    public void logout(String userId) {
-        // In a stateless JWT approach, logout is handled client-side
-        // For a more robust implementation, we could maintain a token blacklist
+        return phone.substring(0, 3) + "****" + phone.substring(phone.length() - 4);
     }
 }

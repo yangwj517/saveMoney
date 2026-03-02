@@ -40,7 +40,8 @@ public class BudgetServiceImpl implements BudgetService {
     private final CategoryRepository categoryRepository;
     private final RecordRepository recordRepository;
 
-    public BudgetServiceImpl(BudgetRepository budgetRepository, CategoryRepository categoryRepository,
+    public BudgetServiceImpl(BudgetRepository budgetRepository,
+                             CategoryRepository categoryRepository,
                              RecordRepository recordRepository) {
         this.budgetRepository = budgetRepository;
         this.categoryRepository = categoryRepository;
@@ -68,7 +69,9 @@ public class BudgetServiceImpl implements BudgetService {
             budgets = budgetRepository.findByUserIdAndBookType(userId, bookType);
         }
         // 将实体转换为Map格式，并计算已使用额度
-        return budgets.stream().map(b -> toMap(b, userId)).collect(Collectors.toList());
+        return budgets.stream()
+                .map(b -> toMap(b, userId))
+                .collect(Collectors.toList());
     }
 
     /**
@@ -81,6 +84,15 @@ public class BudgetServiceImpl implements BudgetService {
     @Override
     @Transactional
     public Map<String, Object> createBudget(String userId, BudgetRequest request) {
+        // 验证请求参数
+        validateBudgetRequest(request);
+
+        // 检查同一周期内是否已存在该分类的预算
+        if (budgetRepository.existsByUserIdAndBookTypeAndPeriodAndCategoryId(
+                userId, request.getBookType(), request.getPeriod(), request.getCategoryId())) {
+            throw new BusinessException(ErrorCode.PARAM_ERROR, "该周期内已存在此分类的预算");
+        }
+
         Budget budget = new Budget();
         budget.setUserId(userId);
         budget.setCategoryId(request.getCategoryId());
@@ -91,6 +103,7 @@ public class BudgetServiceImpl implements BudgetService {
         budget.setAlertThreshold(request.getAlertThreshold());
         // 如果未指定提醒状态，默认不启用
         budget.setIsAlertEnabled(request.getIsAlertEnabled() != null ? request.getIsAlertEnabled() : false);
+
         budgetRepository.save(budget);
         return toMap(budget, userId);
     }
@@ -114,13 +127,28 @@ public class BudgetServiceImpl implements BudgetService {
 
         // 权限验证：只能修改属于自己的预算
         if (!budget.getUserId().equals(userId)) {
-            throw new BusinessException(ErrorCode.FORBIDDEN);
+            throw new BusinessException(ErrorCode.FORBIDDEN, "无权修改此预算");
         }
 
         // 选择性更新预算信息
-        if (request.getAmount() != null) budget.setAmount(request.getAmount());
-        if (request.getAlertThreshold() != null) budget.setAlertThreshold(request.getAlertThreshold());
-        if (request.getIsAlertEnabled() != null) budget.setIsAlertEnabled(request.getIsAlertEnabled());
+        if (request.getAmount() != null) {
+            if (request.getAmount().compareTo(BigDecimal.ZERO) <= 0) {
+                throw new BusinessException(ErrorCode.PARAM_ERROR, "预算金额必须大于0");
+            }
+            budget.setAmount(request.getAmount());
+        }
+
+        if (request.getAlertThreshold() != null) {
+            if (request.getAlertThreshold() < 0 || request.getAlertThreshold() > 100) {
+                throw new BusinessException(ErrorCode.PARAM_ERROR, "提醒阈值必须在0-100之间");
+            }
+            budget.setAlertThreshold(request.getAlertThreshold());
+        }
+
+        if (request.getIsAlertEnabled() != null) {
+            budget.setIsAlertEnabled(request.getIsAlertEnabled());
+        }
+
         budgetRepository.save(budget);
         return toMap(budget, userId);
     }
@@ -140,8 +168,9 @@ public class BudgetServiceImpl implements BudgetService {
 
         // 权限验证：只能删除属于自己的预算
         if (!budget.getUserId().equals(userId)) {
-            throw new BusinessException(ErrorCode.FORBIDDEN);
+            throw new BusinessException(ErrorCode.FORBIDDEN, "无权删除此预算");
         }
+
         budgetRepository.delete(budget);
     }
 
@@ -150,39 +179,68 @@ public class BudgetServiceImpl implements BudgetService {
      *
      * 包含预算信息以及计算出的已使用金额
      *
-     * @param b 预算实体
+     * @param budget 预算实体
      * @param userId 用户ID
      * @return 预算信息Map
      */
-    private Map<String, Object> toMap(Budget b, String userId) {
+    private Map<String, Object> toMap(Budget budget, String userId) {
         Map<String, Object> map = new LinkedHashMap<>();
-        map.put("id", b.getId());
-        map.put("categoryId", b.getCategoryId());
+        map.put("id", budget.getId());
+        map.put("categoryId", budget.getCategoryId());
 
         // 获取分类详情
-        if (b.getCategoryId() != null) {
-            Optional<Category> cat = categoryRepository.findById(b.getCategoryId());
-            if (cat.isPresent()) {
+        if (budget.getCategoryId() != null) {
+            Optional<Category> cat = categoryRepository.findById(budget.getCategoryId());
+            cat.ifPresent(c -> {
                 Map<String, Object> catMap = new LinkedHashMap<>();
-                catMap.put("id", cat.get().getId());
-                catMap.put("name", cat.get().getName());
-                catMap.put("icon", cat.get().getIcon());
-                catMap.put("color", cat.get().getColor());
+                catMap.put("id", c.getId());
+                catMap.put("name", c.getName());
+                catMap.put("icon", c.getIcon());
+                catMap.put("color", c.getColor());
                 map.put("category", catMap);
-            } else {
-                map.put("category", null);
-            }
+            });
         } else {
             map.put("category", null);
         }
 
-        map.put("amount", b.getAmount());
-        // 动态计算已使用的金额
-        map.put("usedAmount", calculateUsedAmount(b, userId));
-        map.put("period", b.getPeriod());
-        map.put("bookType", b.getBookType());
-        map.put("alertThreshold", b.getAlertThreshold());
-        map.put("isAlertEnabled", b.getIsAlertEnabled());
+        // 计算已使用金额和进度
+        BigDecimal usedAmount = calculateUsedAmount(budget, userId);
+        BigDecimal amount = budget.getAmount();
+
+        map.put("amount", amount);
+        map.put("usedAmount", usedAmount);
+
+        // 计算使用百分比
+        if (amount != null && amount.compareTo(BigDecimal.ZERO) > 0) {
+            BigDecimal percentage = usedAmount.multiply(new BigDecimal(100))
+                    .divide(amount, 2, BigDecimal.ROUND_HALF_UP);
+            map.put("percentage", percentage);
+
+            // 判断是否超出预算或达到提醒阈值
+            if (usedAmount.compareTo(amount) >= 0) {
+                map.put("status", "exceeded");
+            } else if (budget.getIsAlertEnabled() && budget.getAlertThreshold() != null) {
+                BigDecimal thresholdAmount = amount.multiply(
+                        new BigDecimal(budget.getAlertThreshold()).divide(new BigDecimal(100)));
+                if (usedAmount.compareTo(thresholdAmount) >= 0) {
+                    map.put("status", "warning");
+                } else {
+                    map.put("status", "normal");
+                }
+            } else {
+                map.put("status", "normal");
+            }
+        } else {
+            map.put("percentage", BigDecimal.ZERO);
+            map.put("status", "normal");
+        }
+
+        map.put("period", budget.getPeriod());
+        map.put("bookType", budget.getBookType());
+        map.put("alertThreshold", budget.getAlertThreshold());
+        map.put("isAlertEnabled", budget.getIsAlertEnabled());
+        map.put("createdAt", budget.getCreatedAt() != null ? budget.getCreatedAt().toString() : null);
+
         return map;
     }
 
@@ -203,14 +261,17 @@ public class BudgetServiceImpl implements BudgetService {
         LocalDate endDate = dateRange[1];
 
         // 计算该分类在该时间范围内的支出总额
+        BigDecimal usedAmount;
         if (budget.getCategoryId() != null) {
-            return recordRepository.sumExpenseByBookTypeAndCategoryAndDateBetween(
+            usedAmount = recordRepository.sumExpenseByBookTypeAndCategoryAndDateBetween(
                     userId, budget.getBookType(), budget.getCategoryId(), startDate, endDate);
         } else {
             // 如果未指定分类，则计算全部支出
-            return recordRepository.sumAmountByUserIdAndBookTypeAndTypeAndDateBetween(
+            usedAmount = recordRepository.sumAmountByUserIdAndBookTypeAndTypeAndDateBetween(
                     userId, budget.getBookType(), "expense", startDate, endDate);
         }
+
+        return usedAmount != null ? usedAmount : BigDecimal.ZERO;
     }
 
     /**
@@ -224,7 +285,11 @@ public class BudgetServiceImpl implements BudgetService {
         LocalDate startDate;
         LocalDate endDate;
 
-        switch (period != null ? period : "monthly") {
+        if (period == null) {
+            period = "monthly";
+        }
+
+        switch (period) {
             case "weekly":
                 // 周度：从本周一到本周日
                 startDate = today.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
@@ -245,12 +310,34 @@ public class BudgetServiceImpl implements BudgetService {
 
         return new LocalDate[]{startDate, endDate};
     }
-}
-            default: // monthly
-                startDate = today.with(TemporalAdjusters.firstDayOfMonth());
-                endDate = today.with(TemporalAdjusters.lastDayOfMonth());
-                break;
+
+    /**
+     * 验证预算创建请求
+     *
+     * @param request 预算创建请求
+     * @throws BusinessException 如果参数无效
+     */
+    private void validateBudgetRequest(BudgetRequest request) {
+        if (request.getAmount() == null || request.getAmount().compareTo(BigDecimal.ZERO) <= 0) {
+            throw new BusinessException(ErrorCode.PARAM_ERROR, "预算金额必须大于0");
         }
-        return new LocalDate[]{startDate, endDate};
+
+        if (request.getPeriod() == null || request.getPeriod().trim().isEmpty()) {
+            throw new BusinessException(ErrorCode.PARAM_ERROR, "预算周期不能为空");
+        }
+
+        if (!List.of("weekly", "monthly", "yearly").contains(request.getPeriod())) {
+            throw new BusinessException(ErrorCode.PARAM_ERROR, "预算周期无效");
+        }
+
+        if (request.getBookType() == null || request.getBookType().trim().isEmpty()) {
+            throw new BusinessException(ErrorCode.PARAM_ERROR, "账簿类型不能为空");
+        }
+
+        if (request.getAlertThreshold() != null) {
+            if (request.getAlertThreshold() < 0 || request.getAlertThreshold() > 100) {
+                throw new BusinessException(ErrorCode.PARAM_ERROR, "提醒阈值必须在0-100之间");
+            }
+        }
     }
 }
