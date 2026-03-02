@@ -2,7 +2,7 @@
  * 攒钱记账 - 账单提醒页
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -17,50 +17,12 @@ import { Colors } from '@/constants/colors';
 import { FontSize, FontWeight } from '@/constants/typography';
 import { BorderRadius, Spacing, Shadows } from '@/constants/layout';
 import { Card } from '@/components/ui';
+import * as reminderService from '@/services/reminder';
 
-// 模拟提醒数据
-const mockReminders = [
-  {
-    id: '1',
-    title: '房租',
-    amount: 3500,
-    day: 1,
-    enabled: true,
-    type: 'expense',
-    bookType: 'personal',
-  },
-  {
-    id: '2',
-    title: '信用卡还款',
-    amount: 5000,
-    day: 15,
-    enabled: true,
-    type: 'expense',
-    bookType: 'personal',
-  },
-  {
-    id: '3',
-    title: '工资',
-    amount: 15000,
-    day: 10,
-    enabled: true,
-    type: 'income',
-    bookType: 'personal',
-  },
-  {
-    id: '4',
-    title: '办公室租金',
-    amount: 8000,
-    day: 5,
-    enabled: false,
-    type: 'expense',
-    bookType: 'business',
-  },
-];
 
 // 提醒项组件
 const ReminderItem: React.FC<{
-  reminder: typeof mockReminders[0];
+  reminder: any;
   onToggle: (id: string, enabled: boolean) => void;
   onPress: () => void;
 }> = ({ reminder, onToggle, onPress }) => {
@@ -78,14 +40,14 @@ const ReminderItem: React.FC<{
             </Text>
           </View>
           <View style={styles.reminderInfo}>
-            <Text style={styles.reminderTitle}>{reminder.title}</Text>
+            <Text style={styles.reminderTitle}>{reminder.name || reminder.title}</Text>
             <Text style={styles.reminderDetail}>
-              每月{reminder.day}日 · ¥{reminder.amount.toLocaleString()}
+              每月{reminder.dueDay || reminder.day}日 · ¥{(reminder.amount || 0).toLocaleString()}
             </Text>
           </View>
         </View>
         <Switch
-          value={reminder.enabled}
+          value={reminder.isEnabled ?? reminder.enabled}
           onValueChange={(value) => onToggle(reminder.id, value)}
           trackColor={{ false: Colors.gray[200], true: Colors.primary.default + '60' }}
           thumbColor={reminder.enabled ? Colors.primary.default : Colors.gray[400]}
@@ -96,14 +58,34 @@ const ReminderItem: React.FC<{
 };
 
 export default function RemindersPage() {
-  const [reminders, setReminders] = useState(mockReminders);
+  const [reminders, setReminders] = useState<any[]>([]);
   const [dailyReminder, setDailyReminder] = useState(true);
   const [reminderTime, setReminderTime] = useState('20:00');
 
-  const handleToggle = (id: string, enabled: boolean) => {
-    setReminders(reminders.map(r => 
-      r.id === id ? { ...r, enabled } : r
-    ));
+  const fetchReminders = useCallback(async () => {
+    try {
+      const data = await reminderService.getReminders();
+      setReminders(data || []);
+    } catch (e) {
+      setReminders([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchReminders();
+    reminderService.getReminderSettings().then((settings: any) => {
+      if (settings) {
+        setDailyReminder(settings.billReminder ?? true);
+        setReminderTime(settings.billReminderTime || '20:00');
+      }
+    }).catch(() => {});
+  }, [fetchReminders]);
+
+  const handleToggle = async (id: string, enabled: boolean) => {
+    setReminders(reminders.map(r => r.id === id ? { ...r, isEnabled: enabled, enabled } : r));
+    try {
+      await reminderService.updateReminder(id, { isEnabled: enabled });
+    } catch {}
   };
 
   const handleAddReminder = () => {

@@ -2,7 +2,7 @@
  * 攒钱记账 - 个人中心页
  */
 
-import React from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -16,7 +16,10 @@ import { Colors } from '@/constants/colors';
 import { FontSize, FontWeight } from '@/constants/typography';
 import { BorderRadius, Spacing, Shadows, Sizes } from '@/constants/layout';
 import { Card, GlassCard } from '@/components/ui';
-import { getPersonalTotalBalance, getBusinessTotalBalance } from '@/mocks';
+import { useAuthStore } from '@/store/auth';
+import * as authServiceApi from '@/services/auth';
+import * as statisticsService from '@/services/statistics';
+import * as userService from '@/services/user';
 
 // 菜单项组件
 const MenuItem: React.FC<{
@@ -54,14 +57,25 @@ const MenuGroup: React.FC<{
 );
 
 export default function ProfilePage() {
-  const personalBalance = getPersonalTotalBalance();
-  const businessBalance = getBusinessTotalBalance();
+  const user = useAuthStore((s) => s.user);
+  const logoutStore = useAuthStore((s) => s.logout);
+  const [personalBalance, setPersonalBalance] = useState(0);
+  const [businessBalance, setBusinessBalance] = useState(0);
+
+  useEffect(() => {
+    statisticsService.getOverview('personal').then((d) => setPersonalBalance(d?.totalBalance || 0)).catch(() => {});
+    statisticsService.getOverview('business').then((d) => setBusinessBalance(d?.totalBalance || 0)).catch(() => {});
+  }, []);
 
   const formatAmount = (amount: number) => {
     return amount.toLocaleString('zh-CN', { minimumFractionDigits: 2 });
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      await authServiceApi.logout();
+    } catch {}
+    logoutStore();
     router.replace('/login');
   };
 
@@ -76,16 +90,16 @@ export default function ProfilePage() {
         <GlassCard style={styles.userCard} padding="lg">
           <View style={styles.userInfo}>
             <View style={styles.avatar}>
-              <Text style={styles.avatarText}>张</Text>
+              <Text style={styles.avatarText}>{user?.nickname?.charAt(0) || '用'}</Text>
             </View>
             <View style={styles.userDetails}>
               <View style={styles.userNameRow}>
-                <Text style={styles.userName}>张先生</Text>
+                <Text style={styles.userName}>{user?.nickname || '用户'}</Text>
                 <TouchableOpacity style={styles.editButton} onPress={() => router.push('/profile/edit')}>
                   <Text style={styles.editText}>编辑资料 ›</Text>
                 </TouchableOpacity>
               </View>
-              <Text style={styles.userId}>ID: 10086888</Text>
+              <Text style={styles.userId}>ID: {user?.id || '-'}</Text>
             </View>
           </View>
         </GlassCard>

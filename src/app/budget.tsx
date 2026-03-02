@@ -2,7 +2,7 @@
  * 攒钱记账 - 预算设置页
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -19,30 +19,8 @@ import { FontSize, FontWeight } from '@/constants/typography';
 import { BorderRadius, Spacing, Shadows } from '@/constants/layout';
 import { Card } from '@/components/ui';
 import { AccountBookType } from '@/types';
+import * as budgetService from '@/services/budget';
 
-// 模拟预算数据
-const mockBudgets = {
-  personal: {
-    totalBudget: 8000,
-    spent: 5230,
-    categories: [
-      { id: '1', name: '餐饮', icon: '🍜', budget: 2000, spent: 1580, color: '#FF6B6B' },
-      { id: '2', name: '交通', icon: '🚗', budget: 800, spent: 650, color: '#4CAF50' },
-      { id: '3', name: '购物', icon: '🛒', budget: 1500, spent: 1200, color: '#2196F3' },
-      { id: '4', name: '娱乐', icon: '🎮', budget: 1000, spent: 800, color: '#9C6ADE' },
-      { id: '5', name: '日用', icon: '🏠', budget: 500, spent: 420, color: '#FFB84D' },
-    ],
-  },
-  business: {
-    totalBudget: 30000,
-    spent: 18500,
-    categories: [
-      { id: '6', name: '办公', icon: '📎', budget: 5000, spent: 3200, color: '#2E7EB5' },
-      { id: '7', name: '差旅', icon: '✈️', budget: 10000, spent: 8500, color: '#4CAF50' },
-      { id: '8', name: '招待', icon: '🍽️', budget: 8000, spent: 4800, color: '#FF6B6B' },
-    ],
-  },
-};
 
 // 预算进度条组件
 const BudgetProgress: React.FC<{
@@ -75,10 +53,12 @@ const BudgetProgress: React.FC<{
 
 // 分类预算卡片
 const CategoryBudgetCard: React.FC<{
-  category: typeof mockBudgets.personal.categories[0];
+  category: any;
   onPress: () => void;
 }> = ({ category, onPress }) => {
-  const remaining = category.budget - category.spent;
+  const remaining = (category.amount || category.budget || 0) - (category.usedAmount || category.spent || 0);
+  const budget = category.amount || category.budget || 0;
+  const spent = category.usedAmount || category.spent || 0;
   const isOverBudget = remaining < 0;
 
   return (
@@ -86,13 +66,13 @@ const CategoryBudgetCard: React.FC<{
       <Card style={styles.categoryCard}>
         <View style={styles.categoryHeader}>
           <View style={styles.categoryLeft}>
-            <View style={[styles.categoryIcon, { backgroundColor: category.color + '20' }]}>
-              <Text style={styles.categoryIconText}>{category.icon}</Text>
+            <View style={[styles.categoryIcon, { backgroundColor: (category.category?.color || category.color || '#6B7280') + '20' }]}>
+              <Text style={styles.categoryIconText}>{category.category?.name?.charAt(0) || category.icon || '?'}</Text>
             </View>
             <View>
-              <Text style={styles.categoryName}>{category.name}</Text>
+              <Text style={styles.categoryName}>{category.category?.name || category.name}</Text>
               <Text style={styles.categorySpent}>
-                已花 ¥{category.spent.toLocaleString()} / ¥{category.budget.toLocaleString()}
+                已花 ¥{spent.toLocaleString()} / ¥{budget.toLocaleString()}
               </Text>
             </View>
           </View>
@@ -103,7 +83,7 @@ const CategoryBudgetCard: React.FC<{
             <Text style={styles.categoryArrow}>›</Text>
           </View>
         </View>
-        <BudgetProgress spent={category.spent} budget={category.budget} color={category.color} />
+        <BudgetProgress spent={spent} budget={budget} color={category.category?.color || category.color || '#6B7280'} />
       </Card>
     </TouchableOpacity>
   );
@@ -114,11 +94,24 @@ export default function BudgetPage() {
   const [budgetEnabled, setBudgetEnabled] = useState(true);
   const [alertEnabled, setAlertEnabled] = useState(true);
   const [alertThreshold, setAlertThreshold] = useState('80');
+  const [budgets, setBudgets] = useState<any[]>([]);
 
-  const budgetData = activeBook === 'personal' ? mockBudgets.personal : mockBudgets.business;
+  const fetchBudgets = useCallback(async () => {
+    try {
+      const data = await budgetService.getBudgets(activeBook, 'monthly');
+      setBudgets(data || []);
+    } catch (e) {
+      setBudgets([]);
+    }
+  }, [activeBook]);
+
+  useEffect(() => { fetchBudgets(); }, [fetchBudgets]);
+
   const bookColor = activeBook === 'personal' ? Colors.personal : Colors.business;
-  const remaining = budgetData.totalBudget - budgetData.spent;
-  const percentage = (budgetData.spent / budgetData.totalBudget) * 100;
+  const totalBudget = budgets.reduce((sum: number, b: any) => sum + (b.amount || 0), 0);
+  const totalSpent = budgets.reduce((sum: number, b: any) => sum + (b.usedAmount || 0), 0);
+  const remaining = totalBudget - totalSpent;
+  const percentage = totalBudget > 0 ? (totalSpent / totalBudget) * 100 : 0;
 
   const handleEditCategory = (categoryId: string) => {
     console.log('Edit category budget:', categoryId);
@@ -194,7 +187,7 @@ export default function BudgetPage() {
             <>
               <View style={styles.totalAmountRow}>
                 <Text style={styles.totalAmount}>
-                  ¥{budgetData.totalBudget.toLocaleString()}
+                  ¥{totalBudget.toLocaleString()}
                 </Text>
                 <TouchableOpacity style={styles.editButton}>
                   <Text style={[styles.editText, { color: bookColor }]}>编辑</Text>
@@ -218,7 +211,7 @@ export default function BudgetPage() {
               <View style={styles.totalStats}>
                 <View style={styles.statItem}>
                   <Text style={styles.statLabel}>已花费</Text>
-                  <Text style={styles.statValue}>¥{budgetData.spent.toLocaleString()}</Text>
+                  <Text style={styles.statValue}>¥{totalSpent.toLocaleString()}</Text>
                 </View>
                 <View style={styles.statItem}>
                   <Text style={styles.statLabel}>{remaining >= 0 ? '剩余' : '超支'}</Text>
@@ -282,7 +275,7 @@ export default function BudgetPage() {
               </TouchableOpacity>
             </View>
 
-            {budgetData.categories.map((category) => (
+            {budgets.map((category: any) => (
               <CategoryBudgetCard
                 key={category.id}
                 category={category}

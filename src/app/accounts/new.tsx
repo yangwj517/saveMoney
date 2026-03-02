@@ -10,6 +10,7 @@ import {
   ScrollView,
   TouchableOpacity,
   TextInput,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -19,6 +20,7 @@ import { FontSize, FontWeight } from '@/constants/typography';
 import { BorderRadius, Spacing } from '@/constants/layout';
 import { Card } from '@/components/ui';
 import { AccountBookType } from '@/types';
+import * as accountService from '@/services/account';
 
 // 账户类型选项
 const ACCOUNT_TYPES = [
@@ -39,22 +41,27 @@ export default function AddAccountPage() {
 
   const bookColor = bookType === 'personal' ? Colors.personal : Colors.business;
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!name.trim()) {
-      console.log('请输入账户名称');
+      Alert.alert('提示', '请输入账户名称');
       return;
     }
-
-    const account = {
-      bookType,
-      accountType,
-      name,
-      balance: parseFloat(balance) || 0,
-      note,
-    };
-
-    console.log('创建账户:', account);
-    router.back();
+    try {
+      const iconMap: Record<string, string> = {
+        cash: 'wallet', bank: 'credit-card', alipay: 'mobile',
+        wechat: 'comment', credit: 'credit-card', other: 'wallet',
+      };
+      await accountService.createAccount({
+        name,
+        balance: parseFloat(balance) || 0,
+        icon: iconMap[accountType] || 'wallet',
+        color: bookColor,
+        bookType,
+      });
+      router.back();
+    } catch (e: any) {
+      Alert.alert('创建失败', e.message || '请稍后重试');
+    }
   };
 
   return (

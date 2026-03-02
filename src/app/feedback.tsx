@@ -10,6 +10,7 @@ import {
   ScrollView,
   TouchableOpacity,
   TextInput,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -18,6 +19,7 @@ import { Colors, Gradients } from '@/constants/colors';
 import { FontSize, FontWeight } from '@/constants/typography';
 import { BorderRadius, Spacing, Shadows } from '@/constants/layout';
 import { Card } from '@/components/ui';
+import * as feedbackService from '@/services/feedback';
 
 // 常见问题数据
 const faqList = [
@@ -97,15 +99,23 @@ export default function FeedbackPage() {
   const [feedbackContent, setFeedbackContent] = useState('');
   const [contactInfo, setContactInfo] = useState('');
 
-  const handleSubmitFeedback = () => {
+  const handleSubmitFeedback = async () => {
     if (!feedbackContent.trim()) {
-      console.log('Please enter feedback content');
+      Alert.alert('提示', '请输入反馈内容');
       return;
     }
-    console.log('Submit feedback:', { feedbackType, feedbackContent, contactInfo });
-    // 重置表单
-    setFeedbackContent('');
-    setContactInfo('');
+    try {
+      await feedbackService.submitFeedback({
+        type: feedbackType,
+        content: feedbackContent,
+        contact: contactInfo || undefined,
+      });
+      Alert.alert('提交成功', '感谢您的反馈！');
+      setFeedbackContent('');
+      setContactInfo('');
+    } catch (e: any) {
+      Alert.alert('提交失败', e.message || '请稍后重试');
+    }
   };
 
   return (

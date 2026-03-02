@@ -2,7 +2,7 @@
  * 攒钱记账 - 记账页
  */
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -13,6 +13,7 @@ import {
   Dimensions,
   Keyboard,
   TouchableWithoutFeedback,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -21,8 +22,10 @@ import { Colors, Gradients } from '@/constants/colors';
 import { Typography, FontSize, FontWeight } from '@/constants/typography';
 import { BorderRadius, Spacing, Shadows, Sizes } from '@/constants/layout';
 import { Button, Card } from '@/components/ui';
-import { AccountBookType, TransactionType } from '@/types';
-import { getCategoriesByBookAndType } from '@/mocks';
+import { AccountBookType, TransactionType, Category } from '@/types';
+import * as categoryService from '@/services/category';
+import * as recordService from '@/services/record';
+import * as accountService from '@/services/account';
 
 const { width } = Dimensions.get('window');
 
@@ -101,10 +104,21 @@ export default function RecordPage() {
   );
   const [amount, setAmount] = useState('0');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [selectedAccount, setSelectedAccount] = useState<string | null>(null);
   const [note, setNote] = useState('');
   const [isNoteFocused, setIsNoteFocused] = useState(false);
+  const [categories, setCategories] = useState<any[]>([]);
+  const [accounts, setAccounts] = useState<any[]>([]);
 
-  const categories = getCategoriesByBookAndType(bookType, transactionType);
+  useEffect(() => {
+    categoryService.getCategories(bookType, transactionType).then(setCategories).catch(() => setCategories([]));
+    accountService.getAccounts(bookType).then((data) => {
+      setAccounts(data);
+      const defaultAcc = data.find((a: any) => a.isDefault) || data[0];
+      if (defaultAcc) setSelectedAccount(defaultAcc.id);
+    }).catch(() => setAccounts([]));
+  }, [bookType, transactionType]);
+
   const bookColor = bookType === 'personal' ? Colors.personal : Colors.business;
 
   const handleInput = (value: string) => {
@@ -131,15 +145,37 @@ export default function RecordPage() {
     setAmount('0');
   };
 
-  const handleConfirm = () => {
-    // 保存记录逻辑
-    console.log('Save record:', { bookType, transactionType, amount, selectedCategory, note });
-    // 重置表单
-    setAmount('0');
-    setSelectedCategory(null);
-    setNote('');
-    // 跳转到首页
-    router.push('/(tabs)');
+  const handleConfirm = async () => {
+    if (!selectedCategory) {
+      Alert.alert('提示', '请选择分类');
+      return;
+    }
+    if (!selectedAccount) {
+      Alert.alert('提示', '请选择账户');
+      return;
+    }
+    if (amount === '0' || !parseFloat(amount)) {
+      Alert.alert('提示', '请输入金额');
+      return;
+    }
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      await recordService.createRecord({
+        amount: parseFloat(amount),
+        type: transactionType,
+        categoryId: selectedCategory,
+        accountId: selectedAccount,
+        bookType,
+        date: today,
+        note: note || undefined,
+      });
+      setAmount('0');
+      setSelectedCategory(null);
+      setNote('');
+      router.push('/(tabs)');
+    } catch (e: any) {
+      Alert.alert('保存失败', e.message || '请稍后重试');
+    }
   };
 
   const dismissKeyboard = () => {
@@ -288,7 +324,7 @@ export default function RecordPage() {
           </TouchableOpacity>
           <TouchableOpacity style={styles.infoItem}>
             <Text style={styles.infoLabel}>账户</Text>
-            <Text style={styles.infoValue}>{bookType === 'personal' ? '现金' : '备用金'}</Text>
+            <Text style={styles.infoValue}>{accounts.find((a: any) => a.id === selectedAccount)?.name || '请选择'}</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>

@@ -43,7 +43,16 @@ public class AuthController {
      */
     @PostMapping("/sms/send")
     public ApiResponse<Map<String, Object>> sendSms(@Valid @RequestBody SmsSendRequest request) {
-        return ApiResponse.success(authService.sendSmsCode(request.getPhone()));
+        System.out.println("[CONTROLLER] /auth/sms/send called with phone: " + request.getPhone());
+        try {
+            Map<String, Object> result = authService.sendSmsCode(request.getPhone());
+            System.out.println("[CONTROLLER] /auth/sms/send success, response: " + result);
+            return ApiResponse.success(result);
+        } catch (Exception e) {
+            System.err.println("[CONTROLLER] /auth/sms/send error: " + e.getMessage());
+            e.printStackTrace();
+            throw e;
+        }
     }
 
     /**

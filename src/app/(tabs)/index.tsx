@@ -2,7 +2,7 @@
  * 攒钱记账 - 首页（今日概览）
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -10,6 +10,7 @@ import {
   ScrollView,
   TouchableOpacity,
   Dimensions,
+  ActivityIndicator,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -19,12 +20,10 @@ import { Typography, FontSize, FontWeight } from '@/constants/typography';
 import { BorderRadius, Spacing, Shadows, Sizes } from '@/constants/layout';
 import { Card, GlassCard } from '@/components/ui';
 import { AccountBookType, Record as RecordType } from '@/types';
-import {
-  getPersonalTotalBalance,
-  getBusinessTotalBalance,
-  getRecentRecords,
-  getActiveSavingsGoals,
-} from '@/mocks';
+import { useAuthStore } from '@/store/auth';
+import * as statisticsService from '@/services/statistics';
+import * as recordService from '@/services/record';
+import * as savingsService from '@/services/savings';
 
 const { width } = Dimensions.get('window');
 
@@ -46,11 +45,38 @@ const formatAmount = (amount: number) => {
 
 export default function HomePage() {
   const [currentBook, setCurrentBook] = useState<AccountBookType>('personal');
-  
-  const personalBalance = getPersonalTotalBalance();
-  const businessBalance = getBusinessTotalBalance();
-  const recentRecords = getRecentRecords(3);
-  const savingsGoals = getActiveSavingsGoals().slice(0, 2);
+  const [personalOverview, setPersonalOverview] = useState<any>(null);
+  const [businessOverview, setBusinessOverview] = useState<any>(null);
+  const [recentRecords, setRecentRecords] = useState<any[]>([]);
+  const [savingsGoals, setSavingsGoals] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const user = useAuthStore((s) => s.user);
+
+  const fetchData = useCallback(async () => {
+    try {
+      const [pOverview, bOverview, recordsData, goalsData] = await Promise.all([
+        statisticsService.getOverview('personal').catch(() => null),
+        statisticsService.getOverview('business').catch(() => null),
+        recordService.getRecords({ bookType: 'personal', page: 1, pageSize: 5 }).catch(() => ({ list: [] })),
+        savingsService.getGoals('personal', false).catch(() => []),
+      ]);
+      setPersonalOverview(pOverview);
+      setBusinessOverview(bOverview);
+      setRecentRecords(recordsData?.list || recordsData || []);
+      setSavingsGoals(Array.isArray(goalsData) ? goalsData.slice(0, 2) : []);
+    } catch (e) {
+      console.log('Home fetch error:', e);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  const personalBalance = personalOverview?.totalBalance || 0;
+  const businessBalance = businessOverview?.totalBalance || 0;
 
   const handleQuickRecord = (type: 'expense' | 'income') => {
     // 跳转到记账页，并传递类型参数
@@ -68,7 +94,7 @@ export default function HomePage() {
         <View style={styles.header}>
           <TouchableOpacity style={styles.avatarContainer}>
             <View style={styles.avatar}>
-              <Text style={styles.avatarText}>张</Text>
+              <Text style={styles.avatarText}>{user?.nickname?.charAt(0) || '用'}</Text>
             </View>
           </TouchableOpacity>
           
@@ -126,7 +152,7 @@ export default function HomePage() {
                 <Text style={styles.assetLabel}>个人账本</Text>
               </View>
               <Text style={styles.assetAmount}>¥{formatAmount(personalBalance)}</Text>
-              <Text style={styles.assetChange}>今日 +¥320.00</Text>
+              <Text style={styles.assetChange}>今日 +¥{formatAmount(personalOverview?.todayIncome || 0)}</Text>
             </View>
             
             <View style={styles.assetDivider} />
@@ -137,7 +163,7 @@ export default function HomePage() {
                 <Text style={styles.assetLabel}>公司账本</Text>
               </View>
               <Text style={styles.assetAmount}>¥{formatAmount(businessBalance)}</Text>
-              <Text style={styles.assetChange}>今日 +¥0.00</Text>
+              <Text style={styles.assetChange}>今日 +¥{formatAmount(businessOverview?.todayIncome || 0)}</Text>
             </View>
           </View>
         </GlassCard>

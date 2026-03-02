@@ -57,9 +57,21 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
                                     FilterChain filterChain) throws ServletException, IOException {
-        // Swagger UI 相关路径直接放行，不做 JWT 校验
         String path = request.getServletPath();
-        if (path.startsWith("/swagger-ui") || path.startsWith("/v3/api-docs") || path.equals("/swagger-ui.html")) {
+
+        // OPTIONS 预检请求直接放行（CORS）
+        if ("OPTIONS".equalsIgnoreCase(request.getMethod())) {
+            filterChain.doFilter(request, response);
+            return;
+        }
+
+        // 公开接口直接放行，不做 JWT 校验
+        if (path.startsWith("/auth/sms/send")
+                || path.startsWith("/auth/login/phone")
+                || path.startsWith("/auth/token/refresh")
+                || path.startsWith("/swagger-ui")
+                || path.startsWith("/v3/api-docs")
+                || path.equals("/swagger-ui.html")) {
             filterChain.doFilter(request, response);
             return;
         }

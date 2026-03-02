@@ -2,7 +2,7 @@
  * 攒钱记账 - 统计页
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -18,36 +18,50 @@ import { FontSize, FontWeight } from '@/constants/typography';
 import { BorderRadius, Spacing, Shadows, Sizes } from '@/constants/layout';
 import { Card } from '@/components/ui';
 import { AccountBookType } from '@/types';
+import * as statisticsService from '@/services/statistics';
 
 const { width } = Dimensions.get('window');
 
 type TimeFilter = 'week' | 'month' | 'year';
 type BookFilter = 'all' | 'personal' | 'business';
 
-// 模拟统计数据
-const mockCategoryStats = [
-  { id: '1', name: '餐饮', amount: 1520, percentage: 35, color: '#FF6B6B' },
-  { id: '2', name: '交通', amount: 680, percentage: 16, color: '#4ECDC4' },
-  { id: '3', name: '购物', amount: 920, percentage: 21, color: '#9C6ADE' },
-  { id: '4', name: '娱乐', amount: 450, percentage: 10, color: '#F7B731' },
-  { id: '5', name: '其他', amount: 780, percentage: 18, color: '#6B7280' },
-];
+// Helper to get date range
+const getDateRange = (filter: TimeFilter) => {
+  const now = new Date();
+  let startDate: Date;
+  const endDate = now;
+  switch (filter) {
+    case 'week':
+      startDate = new Date(now);
+      startDate.setDate(now.getDate() - 6);
+      break;
+    case 'month':
+      startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+      break;
+    case 'year':
+      startDate = new Date(now.getFullYear(), 0, 1);
+      break;
+  }
+  const fmt = (d: Date) => d.toISOString().split('T')[0];
+  return { startDate: fmt(startDate), endDate: fmt(endDate) };
+};
 
 // 简单饼图组件
-const SimplePieChart: React.FC<{ data: typeof mockCategoryStats }> = ({ data }) => {
+const SimplePieChart: React.FC<{ data: any[] }> = ({ data }) => {
   let currentAngle = 0;
-  
+  const total = data.reduce((s: number, i: any) => s + (i.amount || 0), 0);
+
   return (
     <View style={styles.pieChartContainer}>
       <View style={styles.pieChart}>
-        {data.map((item, index) => {
-          const angle = (item.percentage / 100) * 360;
+        {data.map((item: any, index: number) => {
+          const angle = ((item.percentage || 0) / 100) * 360;
           const startAngle = currentAngle;
           currentAngle += angle;
           
           return (
             <View
-              key={item.id}
+              key={item.id || index}
               style={[
                 styles.pieSlice,
                 {
@@ -59,18 +73,18 @@ const SimplePieChart: React.FC<{ data: typeof mockCategoryStats }> = ({ data }) 
           );
         })}
         <View style={styles.pieCenter}>
-          <Text style={styles.pieCenterAmount}>¥4,350</Text>
+          <Text style={styles.pieCenterAmount}>¥{total.toLocaleString('zh-CN', { minimumFractionDigits: 0 })}</Text>
           <Text style={styles.pieCenterLabel}>总支出</Text>
         </View>
       </View>
       
       {/* 图例 */}
       <View style={styles.legend}>
-        {data.map((item) => (
-          <View key={item.id} style={styles.legendItem}>
+        {data.map((item: any, index: number) => (
+          <View key={item.id || index} style={styles.legendItem}>
             <View style={[styles.legendDot, { backgroundColor: item.color }]} />
             <Text style={styles.legendText}>{item.name}</Text>
-            <Text style={styles.legendPercent}>{item.percentage}%</Text>
+            <Text style={styles.legendPercent}>{item.percentage || 0}%</Text>
           </View>
         ))}
       </View>
@@ -180,6 +194,26 @@ const SimpleBarChart: React.FC<{ timeFilter: TimeFilter }> = ({ timeFilter }) =>
 export default function StatsPage() {
   const [timeFilter, setTimeFilter] = useState<TimeFilter>('month');
   const [bookFilter, setBookFilter] = useState<BookFilter>('all');
+  const [statsData, setStatsData] = useState<any>(null);
+  const [categoryStats, setCategoryStats] = useState<any[]>([]);
+  const [totalExpense, setTotalExpense] = useState(0);
+  const [totalIncome, setTotalIncome] = useState(0);
+
+  const fetchStats = useCallback(async () => {
+    try {
+      const { startDate, endDate } = getDateRange(timeFilter);
+      const bt = bookFilter === 'all' ? 'personal' : bookFilter;
+      const data = await statisticsService.getStatistics(bt, startDate, endDate);
+      setStatsData(data);
+      setTotalExpense(data?.totalExpense || 0);
+      setTotalIncome(data?.totalIncome || 0);
+      setCategoryStats(data?.categoryStats || []);
+    } catch (e) {
+      console.log('Stats fetch error:', e);
+    }
+  }, [timeFilter, bookFilter]);
+
+  useEffect(() => { fetchStats(); }, [fetchStats]);
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -245,15 +279,15 @@ export default function StatsPage() {
         {/* 总览卡片 */}
         <View style={styles.overviewCards}>
           <Card style={styles.overviewCard}>
-            <Text style={styles.overviewLabel}>本月支出</Text>
+            <Text style={styles.overviewLabel}>总支出</Text>
             <Text style={[styles.overviewAmount, { color: Colors.expense }]}>
-              ¥4,350.00
+              ¥{totalExpense.toLocaleString('zh-CN', { minimumFractionDigits: 2 })}
             </Text>
           </Card>
           <Card style={styles.overviewCard}>
-            <Text style={styles.overviewLabel}>本月收入</Text>
+            <Text style={styles.overviewLabel}>总收入</Text>
             <Text style={[styles.overviewAmount, { color: Colors.income }]}>
-              ¥8,820.00
+              ¥{totalIncome.toLocaleString('zh-CN', { minimumFractionDigits: 2 })}
             </Text>
           </Card>
         </View>
@@ -261,7 +295,13 @@ export default function StatsPage() {
         {/* 饼图 */}
         <Card style={styles.chartCard}>
           <Text style={styles.chartTitle}>支出分类占比</Text>
-          <SimplePieChart data={mockCategoryStats} />
+          <SimplePieChart data={categoryStats.map((s: any, i: number) => ({
+            id: s.categoryId || String(i),
+            name: s.category?.name || '未分类',
+            amount: s.amount || 0,
+            percentage: s.percentage || 0,
+            color: s.category?.color || '#6B7280',
+          }))} />
         </Card>
 
         {/* 柱状图 */}
@@ -275,19 +315,19 @@ export default function StatsPage() {
         {/* 分类明细 */}
         <Card style={styles.detailCard}>
           <Text style={styles.chartTitle}>分类支出</Text>
-          {mockCategoryStats.map((item) => (
-            <View key={item.id} style={styles.detailItem}>
+          {categoryStats.map((item: any, index: number) => (
+            <View key={item.categoryId || index} style={styles.detailItem}>
               <View style={styles.detailLeft}>
-                <View style={[styles.detailDot, { backgroundColor: item.color }]} />
-                <Text style={styles.detailName}>{item.name}</Text>
+                <View style={[styles.detailDot, { backgroundColor: item.category?.color || '#6B7280' }]} />
+                <Text style={styles.detailName}>{item.category?.name || '未分类'}</Text>
               </View>
               <View style={styles.detailRight}>
-                <Text style={styles.detailAmount}>¥{item.amount.toFixed(2)}</Text>
+                <Text style={styles.detailAmount}>¥{(item.amount || 0).toFixed(2)}</Text>
                 <View style={styles.detailProgressBar}>
                   <View
                     style={[
                       styles.detailProgress,
-                      { width: `${item.percentage}%`, backgroundColor: item.color },
+                      { width: `${item.percentage || 0}%`, backgroundColor: item.category?.color || '#6B7280' },
                     ]}
                   />
                 </View>
