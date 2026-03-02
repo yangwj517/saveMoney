@@ -60,8 +60,6 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         // 允许匿名访问的端点：登录、短信发送、token 刷新
                         .requestMatchers("/auth/sms/send", "/auth/login/phone", "/auth/token/refresh").permitAll()
-                        // 允许 H2 Console 调试（开发环境）
-                        .requestMatchers("/h2-console/**").permitAll()
                         // 其他请求都需要认证
                         .anyRequest().authenticated()
                 )
@@ -69,8 +67,6 @@ public class SecurityConfig {
                 // 自定义未授权异常处理器
                 .exceptionHandling(ex -> ex.authenticationEntryPoint(authenticationEntryPoint()))
 
-                // H2 Console 需要禁用 frame options
-                .headers(headers -> headers.frameOptions(frame -> frame.disable()))
 
                 // 在 UsernamePasswordAuthenticationFilter 之前注册 JWT 过滤器
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
