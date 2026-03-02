@@ -171,6 +171,7 @@ public class RecordServiceImpl implements RecordService {
         map.put("categoryId", r.getCategoryId());
 
         // Fetch category
+        map.put("category", null);
         if (r.getCategoryId() != null) {
             categoryRepository.findById(r.getCategoryId()).ifPresent(cat -> {
                 Map<String, Object> catMap = new LinkedHashMap<>();
@@ -183,13 +184,11 @@ public class RecordServiceImpl implements RecordService {
                 map.put("category", catMap);
             });
         }
-        if (!map.containsKey("category")) {
-            map.put("category", null);
-        }
 
         map.put("accountId", r.getAccountId());
 
         // Fetch account
+        map.put("account", null);
         if (r.getAccountId() != null) {
             accountRepository.findById(r.getAccountId()).ifPresent(acc -> {
                 Map<String, Object> accMap = new LinkedHashMap<>();
@@ -199,9 +198,6 @@ public class RecordServiceImpl implements RecordService {
                 accMap.put("color", acc.getColor());
                 map.put("account", accMap);
             });
-        }
-        if (!map.containsKey("account")) {
-            map.put("account", null);
         }
 
         map.put("bookType", r.getBookType());
