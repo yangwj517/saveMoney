@@ -60,6 +60,8 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         // 允许匿名访问的端点：登录、短信发送、token 刷新
                         .requestMatchers("/auth/sms/send", "/auth/login/phone", "/auth/token/refresh").permitAll()
+                        // 允许匿名访问 Swagger UI 和 OpenAPI 文档
+                        .requestMatchers("/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs/**").permitAll()
                         // 其他请求都需要认证
                         .anyRequest().authenticated()
                 )
