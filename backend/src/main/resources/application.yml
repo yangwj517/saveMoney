@@ -10,7 +10,7 @@ server:
 spring:
   # 数据源配置（MySQL数据库）
   datasource:
-    url: jdbc:mysql://47.108.67.45:3306/savemoney?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai
+    url: jdbc:mysql://47.108.67.45:3306/saveapp?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai
     driver-class-name: com.mysql.cj.jdbc.Driver
     username: saveManager      # ← 改成你的MySQL用户名
     password: secAdmin#1234      # ← 改成你的MySQL密码
@@ -19,7 +19,7 @@ spring:
   jpa:
     database-platform: org.hibernate.dialect.MySQLDialect  # MySQL方言
     hibernate:
-      ddl-auto: validate  # 仅验证表结构，不自动创建或修改表
+      ddl-auto: update  # 自动更新表结构（补齐缺失的列）
     show-sql: false  # 是否打印SQL语句
     properties:
       hibernate:
