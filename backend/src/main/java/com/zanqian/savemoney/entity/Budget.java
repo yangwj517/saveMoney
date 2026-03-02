@@ -3,6 +3,7 @@ package com.zanqian.savemoney.entity;
 import jakarta.persistence.*;
 import lombok.Data;
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 
 /**
  * 预算实体类
@@ -43,4 +44,22 @@ public class Budget {
 
     /** 是否启用预算提醒 */
     private Boolean isAlertEnabled;
+
+    /** 创建时间 */
+    @Column(updatable = false)
+    private LocalDateTime createdAt;
+
+    /** 更新时间 */
+    private LocalDateTime updatedAt;
+
+    @PrePersist
+    protected void onCreate() {
+        createdAt = LocalDateTime.now();
+        updatedAt = LocalDateTime.now();
+    }
+
+    @PreUpdate
+    protected void onUpdate() {
+        updatedAt = LocalDateTime.now();
+    }
 }
