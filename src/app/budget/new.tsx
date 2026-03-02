@@ -2,7 +2,7 @@
  * 攒钱记账 - 添加分类预算页
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -10,6 +10,7 @@ import {
   ScrollView,
   TouchableOpacity,
   TextInput,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -19,28 +20,8 @@ import { FontSize, FontWeight } from '@/constants/typography';
 import { BorderRadius, Spacing } from '@/constants/layout';
 import { Card } from '@/components/ui';
 import { AccountBookType } from '@/types';
-
-// 分类选项
-const CATEGORIES = {
-  personal: [
-    { id: '1', name: '餐饮', icon: '🍜', color: '#FF6B6B' },
-    { id: '2', name: '交通', icon: '🚗', color: '#4CAF50' },
-    { id: '3', name: '购物', icon: '🛒', color: '#2196F3' },
-    { id: '4', name: '娱乐', icon: '🎮', color: '#9C6ADE' },
-    { id: '5', name: '日用', icon: '🏠', color: '#FFB84D' },
-    { id: '6', name: '医疗', icon: '🏥', color: '#E91E63' },
-    { id: '7', name: '教育', icon: '📚', color: '#00BCD4' },
-    { id: '8', name: '通讯', icon: '📱', color: '#607D8B' },
-  ],
-  business: [
-    { id: '9', name: '办公', icon: '📎', color: '#2E7EB5' },
-    { id: '10', name: '差旅', icon: '✈️', color: '#4CAF50' },
-    { id: '11', name: '招待', icon: '🍽️', color: '#FF6B6B' },
-    { id: '12', name: '采购', icon: '📦', color: '#FFB84D' },
-    { id: '13', name: '营销', icon: '📢', color: '#9C6ADE' },
-    { id: '14', name: '其他', icon: '📋', color: '#607D8B' },
-  ],
-};
+import * as budgetService from '@/services/budget';
+import * as categoryService from '@/services/category';
 
 export default function AddBudgetPage() {
   const [bookType, setBookType] = useState<AccountBookType>('personal');
@@ -48,31 +29,38 @@ export default function AddBudgetPage() {
   const [budgetAmount, setBudgetAmount] = useState('');
   const [alertEnabled, setAlertEnabled] = useState(true);
   const [alertThreshold, setAlertThreshold] = useState('80');
+  const [categories, setCategories] = useState<any[]>([]);
 
-  const categories = bookType === 'personal' ? CATEGORIES.personal : CATEGORIES.business;
+  useEffect(() => {
+    categoryService.getCategories(bookType, 'expense').then(setCategories).catch(() => setCategories([]));
+    setSelectedCategory(null);
+  }, [bookType]);
+
   const bookColor = bookType === 'personal' ? Colors.personal : Colors.business;
-  const selectedCategoryData = categories.find(c => c.id === selectedCategory);
+  const selectedCategoryData = categories.find((c: any) => c.id === selectedCategory);
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!selectedCategory) {
-      console.log('请选择分类');
+      Alert.alert('提示', '请选择分类');
       return;
     }
     if (!budgetAmount || parseFloat(budgetAmount) <= 0) {
-      console.log('请输入有效的预算金额');
+      Alert.alert('提示', '请输入有效的预算金额');
       return;
     }
-
-    const budget = {
-      bookType,
-      categoryId: selectedCategory,
-      amount: parseFloat(budgetAmount),
-      alertEnabled,
-      alertThreshold: parseInt(alertThreshold),
-    };
-
-    console.log('创建预算:', budget);
-    router.back();
+    try {
+      await budgetService.createBudget({
+        categoryId: selectedCategory,
+        amount: parseFloat(budgetAmount),
+        period: 'monthly',
+        bookType,
+        alertThreshold: parseInt(alertThreshold) || 80,
+        isAlertEnabled: alertEnabled,
+      });
+      router.back();
+    } catch (e: any) {
+      Alert.alert('创建失败', e.message || '请稍后重试');
+    }
   };
 
   return (
@@ -144,8 +132,8 @@ export default function AddBudgetPage() {
                 ]}
                 onPress={() => setSelectedCategory(category.id)}
               >
-                <View style={[styles.categoryIcon, { backgroundColor: category.color + '30' }]}>
-                  <Text style={styles.categoryIconText}>{category.icon}</Text>
+                <View style={[styles.categoryIcon, { backgroundColor: (category.color || '#6B7280') + '30' }]}>
+                  <Text style={styles.categoryIconText}>{category.icon || category.name?.charAt(0) || '?'}</Text>
                 </View>
                 <Text style={[
                   styles.categoryLabel, 
@@ -236,8 +224,8 @@ export default function AddBudgetPage() {
           <Card style={styles.previewCard}>
             <Text style={styles.previewTitle}>预算预览</Text>
             <View style={styles.previewContent}>
-              <View style={[styles.previewIcon, { backgroundColor: selectedCategoryData.color + '30' }]}>
-                <Text style={styles.previewIconText}>{selectedCategoryData.icon}</Text>
+              <View style={[styles.previewIcon, { backgroundColor: (selectedCategoryData.color || '#6B7280') + '30' }]}>
+                <Text style={styles.previewIconText}>{selectedCategoryData.icon || selectedCategoryData.name?.charAt(0) || '?'}</Text>
               </View>
               <View style={styles.previewInfo}>
                 <Text style={styles.previewName}>{selectedCategoryData.name}</Text>

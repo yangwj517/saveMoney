@@ -10,6 +10,7 @@ import {
   ScrollView,
   TouchableOpacity,
   TextInput,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -19,6 +20,7 @@ import { FontSize, FontWeight } from '@/constants/typography';
 import { BorderRadius, Spacing } from '@/constants/layout';
 import { Card } from '@/components/ui';
 import { AccountBookType, TransactionType } from '@/types';
+import * as reminderService from '@/services/reminder';
 
 // 常见账单类型
 const BILL_TEMPLATES = [
@@ -51,27 +53,26 @@ export default function AddReminderPage() {
     setTransactionType(template.type);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!name.trim()) {
-      console.log('请输入账单名称');
+      Alert.alert('提示', '请输入账单名称');
       return;
     }
     if (!amount || parseFloat(amount) <= 0) {
-      console.log('请输入有效金额');
+      Alert.alert('提示', '请输入有效金额');
       return;
     }
-
-    const reminder = {
-      bookType,
-      transactionType,
-      name,
-      amount: parseFloat(amount),
-      day,
-      note,
-    };
-
-    console.log('创建提醒:', reminder);
-    router.back();
+    try {
+      await reminderService.createReminder({
+        name,
+        amount: parseFloat(amount),
+        dueDay: day,
+        note: note || undefined,
+      });
+      router.back();
+    } catch (e: any) {
+      Alert.alert('创建失败', e.message || '请稍后重试');
+    }
   };
 
   return (

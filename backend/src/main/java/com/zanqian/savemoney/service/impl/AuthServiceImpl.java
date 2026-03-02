@@ -63,26 +63,33 @@ public class AuthServiceImpl implements AuthService {
     @Override
     @Transactional
     public Map<String, Object> sendSmsCode(String phone) {
+        System.out.println("[DEBUG] sendSmsCode called with phone: " + phone);
+            
         // 验证手机号格式
         validatePhone(phone);
-
-        // 生成6位数字验证码
+    
+        // 生成 6 位数字验证码
         String code = String.format("%06d", SECURE_RANDOM.nextInt(1000000));
-
+        System.out.println("[DEBUG] Generated SMS code: " + code + " for phone: " + phone);
+    
         // 创建并保存短信验证码记录
         SmsCode smsCode = new SmsCode();
         smsCode.setPhone(phone);
         smsCode.setCode(code);
         smsCode.setExpireAt(Instant.now().plusSeconds(smsExpireSeconds));
         smsCode.setUsed(false);
+            
+        System.out.println("[DEBUG] Saving SMS code to database...");
         smsCodeRepository.save(smsCode);
-
+        System.out.println("[DEBUG] SMS code saved successfully with ID: " + smsCode.getId());
+    
         // TODO: 调用短信服务发送验证码
         // smsService.sendSms(phone, code);
-
+    
         // 返回过期时间信息
         Map<String, Object> result = new HashMap<>();
         result.put("expireIn", smsExpireSeconds);
+        System.out.println("[DEBUG] sendSmsCode completed, returning expireIn: " + smsExpireSeconds);
         return result;
     }
 

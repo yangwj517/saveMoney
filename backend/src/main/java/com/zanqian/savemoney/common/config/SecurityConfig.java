@@ -12,6 +12,12 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+
+import java.util.Arrays;
+import java.util.List;
 
 /**
  * Spring Security 安全配置
@@ -50,6 +56,9 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
+                // 启用 CORS 跨域支持（前后端分离）
+                .cors(cors -> cors.configurationSource(corsConfigurationSource()))
+
                 // 禁用 CSRF 保护（前后端分离，使用 token 认证不需要 CSRF 防护）
                 .csrf(AbstractHttpConfigurer::disable)
 
@@ -93,5 +102,33 @@ public class SecurityConfig {
             response.getWriter().write(objectMapper.writeValueAsString(
                     ApiResponse.error(ErrorCode.UNAUTHORIZED.getCode(), ErrorCode.UNAUTHORIZED.getMessage())));
         };
+    }
+
+    /**
+     * CORS 跨域配置
+     *
+     * 允许前端应用跨域访问后端 API
+     *
+     * @return CORS 配置源
+     */
+    @Bean
+    public CorsConfigurationSource corsConfigurationSource() {
+        CorsConfiguration configuration = new CorsConfiguration();
+        // 允许所有来源（开发环境），生产环境应限制为具体域名
+        configuration.setAllowedOriginPatterns(List.of("*"));
+        // 允许的 HTTP 方法
+        configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"));
+        // 允许的请求头
+        configuration.setAllowedHeaders(List.of("*"));
+        // 暴露响应头，让浏览器端可以读取
+        configuration.setExposedHeaders(Arrays.asList("Authorization", "Content-Type"));
+        // 允许携带凭证（如 Cookie、Authorization）
+        configuration.setAllowCredentials(true);
+        // 预检请求缓存时间（秒）
+        configuration.setMaxAge(3600L);
+
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/**", configuration);
+        return source;
     }
 }

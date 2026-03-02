@@ -9,6 +9,7 @@ import { router } from 'expo-router';
 import { Colors, Gradients } from '@/constants/colors';
 import { Typography, FontSize, FontWeight } from '@/constants/typography';
 import { Spacing } from '@/constants/layout';
+import { useAuthStore } from '@/store/auth';
 
 const { width } = Dimensions.get('window');
 
@@ -17,6 +18,7 @@ export default function SplashPage() {
   const shimmerAnim = useRef(new Animated.Value(0)).current;
   const logoScale = useRef(new Animated.Value(0.8)).current;
   const logoOpacity = useRef(new Animated.Value(0)).current;
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
 
   useEffect(() => {
     // Logo 动画
@@ -51,12 +53,10 @@ export default function SplashPage() {
 
     // 2.5秒后跳转
     const timer = setTimeout(() => {
-      // 检查是否首次启动（实际应用中应该检查 AsyncStorage）
-      const isFirstLaunch = true; // 模拟首次启动
-      if (isFirstLaunch) {
-        router.replace('/onboarding');
-      } else {
+      if (isAuthenticated) {
         router.replace('/(tabs)');
+      } else {
+        router.replace('/login');
       }
     }, 2500);
 

@@ -2,7 +2,7 @@
  * 攒钱记账 - 消息通知页
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -17,55 +17,8 @@ import { Colors } from '@/constants/colors';
 import { FontSize, FontWeight } from '@/constants/typography';
 import { BorderRadius, Spacing, Shadows } from '@/constants/layout';
 import { Card } from '@/components/ui';
+import * as notificationService from '@/services/notification';
 
-// 模拟通知消息
-const mockNotifications = [
-  {
-    id: '1',
-    type: 'reminder',
-    title: '记账提醒',
-    content: '今天还没记账哦，别忘了记录今天的收支～',
-    time: '20:00',
-    date: '今天',
-    read: false,
-  },
-  {
-    id: '2',
-    type: 'achievement',
-    title: '目标达成',
-    content: '恭喜！您的「旅行基金」目标已完成 50%！',
-    time: '15:30',
-    date: '今天',
-    read: false,
-  },
-  {
-    id: '3',
-    type: 'bill',
-    title: '账单提醒',
-    content: '明天是您的「信用卡还款日」，请注意按时还款',
-    time: '10:00',
-    date: '昨天',
-    read: true,
-  },
-  {
-    id: '4',
-    type: 'system',
-    title: '系统通知',
-    content: '您的账本数据已成功同步到云端',
-    time: '09:00',
-    date: '昨天',
-    read: true,
-  },
-  {
-    id: '5',
-    type: 'report',
-    title: '周报生成',
-    content: '您的上周财务周报已生成，点击查看详情',
-    time: '08:00',
-    date: '3天前',
-    read: true,
-  },
-];
 
 // 通知图标映射
 const notificationIcons: Record<string, string> = {
@@ -87,7 +40,7 @@ const notificationColors: Record<string, string> = {
 
 // 通知项组件
 const NotificationItem: React.FC<{
-  notification: typeof mockNotifications[0];
+  notification: any;
   onPress: () => void;
 }> = ({ notification, onPress }) => {
   const icon = notificationIcons[notification.type];
@@ -95,7 +48,7 @@ const NotificationItem: React.FC<{
 
   return (
     <TouchableOpacity 
-      style={[styles.notificationItem, !notification.read && styles.notificationUnread]}
+      style={[styles.notificationItem, !(notification.isRead ?? notification.read) && styles.notificationUnread]}
       onPress={onPress}
     >
       <View style={[styles.notificationIcon, { backgroundColor: color + '20' }]}>
@@ -104,13 +57,13 @@ const NotificationItem: React.FC<{
       <View style={styles.notificationContent}>
         <View style={styles.notificationHeader}>
           <Text style={styles.notificationTitle}>{notification.title}</Text>
-          <Text style={styles.notificationTime}>{notification.date} {notification.time}</Text>
+          <Text style={styles.notificationTime}>{new Date(notification.createdAt || '').toLocaleDateString('zh-CN')}</Text>
         </View>
         <Text style={styles.notificationText} numberOfLines={2}>
           {notification.content}
         </Text>
       </View>
-      {!notification.read && <View style={[styles.unreadDot, { backgroundColor: color }]} />}
+      {!notification.isRead && !notification.read && <View style={[styles.unreadDot, { backgroundColor: color }]} />}
     </TouchableOpacity>
   );
 };
@@ -141,7 +94,7 @@ const SettingItem: React.FC<{
 );
 
 export default function NotificationsPage() {
-  const [notifications, setNotifications] = useState(mockNotifications);
+  const [notifications, setNotifications] = useState<any[]>([]);
   const [showSettings, setShowSettings] = useState(false);
   
   // 通知设置
@@ -151,16 +104,29 @@ export default function NotificationsPage() {
   const [achievementEnabled, setAchievementEnabled] = useState(true);
   const [reportEnabled, setReportEnabled] = useState(false);
 
-  const unreadCount = notifications.filter(n => !n.read).length;
+  const fetchNotifications = useCallback(async () => {
+    try {
+      const data = await notificationService.getNotifications(1, 50);
+      setNotifications(data?.list || data || []);
+    } catch (e) {
+      setNotifications([]);
+    }
+  }, []);
 
-  const handleNotificationPress = (id: string) => {
+  useEffect(() => { fetchNotifications(); }, [fetchNotifications]);
+
+  const unreadCount = notifications.filter((n: any) => !n.isRead && !n.read).length;
+
+  const handleNotificationPress = async (id: string) => {
     setNotifications(notifications.map(n =>
-      n.id === id ? { ...n, read: true } : n
+      n.id === id ? { ...n, isRead: true, read: true } : n
     ));
+    try { await notificationService.markAsRead(id); } catch {}
   };
 
-  const handleMarkAllRead = () => {
-    setNotifications(notifications.map(n => ({ ...n, read: true })));
+  const handleMarkAllRead = async () => {
+    setNotifications(notifications.map(n => ({ ...n, isRead: true, read: true })));
+    try { await notificationService.markAllAsRead(); } catch {}
   };
 
   const handleClearAll = () => {

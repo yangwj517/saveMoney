@@ -2,7 +2,7 @@
  * 攒钱记账 - 编辑资料页
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -11,6 +11,7 @@ import {
   TouchableOpacity,
   TextInput,
   Image,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -18,6 +19,8 @@ import { Colors } from '@/constants/colors';
 import { FontSize, FontWeight } from '@/constants/typography';
 import { BorderRadius, Spacing, Shadows } from '@/constants/layout';
 import { Card } from '@/components/ui';
+import { useAuthStore } from '@/store/auth';
+import * as userService from '@/services/user';
 
 // 输入项组件
 const InputItem: React.FC<{
@@ -56,20 +59,38 @@ const SelectItem: React.FC<{
 );
 
 export default function EditProfilePage() {
-  const [nickname, setNickname] = useState('张先生');
-  const [phone, setPhone] = useState('138****8888');
-  const [email, setEmail] = useState('zhang@example.com');
+  const user = useAuthStore((s) => s.user);
+  const setUserStore = useAuthStore((s) => s.setUser);
+  const [nickname, setNickname] = useState(user?.nickname || '');
+  const [phone, setPhone] = useState(user?.phone || '');
+  const [email, setEmail] = useState(user?.email || '');
   const [gender, setGender] = useState('男');
   const [birthday, setBirthday] = useState('1990-01-01');
 
-  const handleSave = () => {
-    // 保存逻辑
-    console.log('Save profile:', { nickname, phone, email, gender, birthday });
-    router.back();
+  useEffect(() => {
+    userService.getProfile().then((profile: any) => {
+      if (profile) {
+        setNickname(profile.nickname || '');
+        setPhone(profile.phone || '');
+        setEmail(profile.email || '');
+      }
+    }).catch(() => {});
+  }, []);
+
+  const handleSave = async () => {
+    try {
+      const updated = await userService.updateProfile({ nickname, email });
+      if (updated) {
+        setUserStore({ ...user!, nickname: updated.nickname || nickname, email: updated.email || email });
+      }
+      router.back();
+    } catch (e: any) {
+      Alert.alert('保存失败', e.message || '请稍后重试');
+    }
   };
 
   const handleAvatarChange = () => {
-    // 更换头像逻辑
+    // 更换头像逻辑 - 可使用 expo-image-picker
     console.log('Change avatar');
   };
 
@@ -94,7 +115,7 @@ export default function EditProfilePage() {
         {/* 头像 */}
         <TouchableOpacity style={styles.avatarSection} onPress={handleAvatarChange}>
           <View style={styles.avatar}>
-            <Text style={styles.avatarText}>张</Text>
+            <Text style={styles.avatarText}>{nickname?.charAt(0) || '用'}</Text>
           </View>
           <Text style={styles.avatarHint}>点击更换头像</Text>
         </TouchableOpacity>

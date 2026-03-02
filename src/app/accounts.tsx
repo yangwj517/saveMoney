@@ -2,13 +2,14 @@
  * 攒钱记账 - 账户管理页
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -18,37 +19,27 @@ import { FontSize, FontWeight } from '@/constants/typography';
 import { BorderRadius, Spacing, Shadows } from '@/constants/layout';
 import { Card } from '@/components/ui';
 import { AccountBookType } from '@/types';
+import * as accountService from '@/services/account';
 
-// 模拟账户数据
-const mockAccounts = {
-  personal: [
-    { id: '1', name: '现金', balance: 2580.50, icon: '💵', type: 'cash' },
-    { id: '2', name: '支付宝', balance: 15680.00, icon: '📱', type: 'alipay' },
-    { id: '3', name: '微信钱包', balance: 8920.30, icon: '💬', type: 'wechat' },
-    { id: '4', name: '银行卡', balance: 45000.00, icon: '💳', type: 'bank' },
-    { id: '5', name: '信用卡', balance: -3500.00, icon: '💳', type: 'credit' },
-  ],
-  business: [
-    { id: '6', name: '公司备用金', balance: 50000.00, icon: '💰', type: 'cash' },
-    { id: '7', name: '对公账户', balance: 128500.00, icon: '🏦', type: 'bank' },
-  ],
-};
 
 // 账户卡片组件
 const AccountCard: React.FC<{
-  account: typeof mockAccounts.personal[0];
+  account: any;
   bookType: AccountBookType;
   onPress: () => void;
 }> = ({ account, bookType, onPress }) => {
   const bookColor = bookType === 'personal' ? Colors.personal : Colors.business;
-  const isNegative = account.balance < 0;
+  const isNegative = (account.balance || 0) < 0;
+  const iconMap: Record<string, string> = {
+    wallet: '💵', 'credit-card': '💳', mobile: '📱', comment: '💬', default: '💰',
+  };
 
   return (
     <TouchableOpacity onPress={onPress}>
       <Card style={styles.accountCard}>
         <View style={styles.accountLeft}>
           <View style={[styles.accountIcon, { backgroundColor: bookColor + '15' }]}>
-            <Text style={styles.accountIconText}>{account.icon}</Text>
+            <Text style={styles.accountIconText}>{iconMap[account.icon] || iconMap.default}</Text>
           </View>
           <Text style={styles.accountName}>{account.name}</Text>
         </View>
@@ -65,11 +56,21 @@ const AccountCard: React.FC<{
 
 export default function AccountsPage() {
   const [activeBook, setActiveBook] = useState<AccountBookType>('personal');
+  const [accounts, setAccounts] = useState<any[]>([]);
 
-  const accounts = activeBook === 'personal' ? mockAccounts.personal : mockAccounts.business;
+  const fetchAccounts = useCallback(async () => {
+    try {
+      const data = await accountService.getAccounts(activeBook);
+      setAccounts(data || []);
+    } catch (e) {
+      setAccounts([]);
+    }
+  }, [activeBook]);
+
+  useEffect(() => { fetchAccounts(); }, [fetchAccounts]);
+
   const bookColor = activeBook === 'personal' ? Colors.personal : Colors.business;
-
-  const totalBalance = accounts.reduce((sum, acc) => sum + acc.balance, 0);
+  const totalBalance = accounts.reduce((sum: number, acc: any) => sum + (acc.balance || 0), 0);
 
   const handleAddAccount = () => {
     router.push('/accounts/new' as any);

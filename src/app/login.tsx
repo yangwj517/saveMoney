@@ -2,7 +2,7 @@
  * 攒钱记账 - 登录/注册页
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -12,6 +12,7 @@ import {
   Platform,
   ScrollView,
   Dimensions,
+  Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
@@ -19,6 +20,8 @@ import { Colors, Gradients } from '@/constants/colors';
 import { Typography, FontSize, FontWeight } from '@/constants/typography';
 import { BorderRadius, Spacing, Shadows } from '@/constants/layout';
 import { Button, Input, GlassCard } from '@/components/ui';
+import { useAuthStore } from '@/store/auth';
+import * as authService from '@/services/auth';
 
 const { width, height } = Dimensions.get('window');
 
@@ -45,18 +48,77 @@ const Icon: React.FC<{ name: string; color?: string; size?: number }> = ({
 
 export default function LoginPage() {
   const [phone, setPhone] = useState('');
-  const [password, setPassword] = useState('');
-  const [isLogin, setIsLogin] = useState(true);
+  const [code, setCode] = useState('');
+  const [countdown, setCountdown] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const handleSubmit = () => {
-    // 模拟登录成功，直接跳转到主页
-    router.replace('/(tabs)');
+  const { setTokens, setUser } = useAuthStore();
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, []);
+
+  const handleSendSms = async () => {
+    if (!phone.trim() || phone.length < 11) {
+      Alert.alert('提示','请输入正确的手机号');
+      return;
+    }
+    try {
+      // 使用 authService 发送短信
+      const result = await authService.sendSms(phone);
+      console.log('[SMS] success:', result);
+        
+      Alert.alert('发送成功', '验证码已发送，过期时间：' + (result.expireIn || '未知') + '秒');
+      setCountdown(60);
+      timerRef.current = setInterval(() => {
+        setCountdown((prev) => {
+          if (prev <= 1) {
+            if (timerRef.current) clearInterval(timerRef.current);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    } catch (e: any) {
+      console.log('[SMS] error:', e);
+      Alert.alert('发送失败', e.message || '请稍后重试');
+    }
   };
 
-  const handleThirdPartyLogin = (type: string) => {
-    console.log('Third party login:', type);
-    // 模拟登录成功
-    router.replace('/(tabs)');
+  const handleLogin = async () => {
+    if (!phone.trim()) {
+      Alert.alert('提示', '请输入手机号');
+      return;
+    }
+    if (!code.trim()) {
+      Alert.alert('提示', '请输入验证码');
+      return;
+    }
+    setLoading(true);
+    try {
+      // 使用 authService 登录
+      const result = await authService.loginByPhone(phone, code);
+      console.log('[Login] success:', result);
+        
+      if (!result.token) {
+        Alert.alert('登录异常', '响应中无 token 字段');
+        return;
+      }
+  
+      setTokens(result.token, result.refreshToken);
+      if (result.user) {
+        setUser(result.user as any);
+      }
+      router.replace('/(tabs)');
+    } catch (e: any) {
+      console.log('[Login] error:', e);
+      Alert.alert('登录失败', e.message || '请稍后重试');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -83,11 +145,9 @@ export default function LoginPage() {
                 <View style={[styles.piggyHalf, styles.piggyRight]} />
               </View>
             </View>
-            <Text style={styles.welcomeText}>
-              {isLogin ? '欢迎回来' : '创建账号'}
-            </Text>
+            <Text style={styles.welcomeText}>欢迎使用攒钱记账</Text>
             <Text style={styles.subtitleText}>
-              {isLogin ? '登录您的账号，继续记录生活' : '注册新账号，开启智能记账'}
+              使用手机号验证码快速登录
             </Text>
           </View>
 
@@ -96,70 +156,55 @@ export default function LoginPage() {
             <Input
               value={phone}
               onChangeText={setPhone}
-              placeholder="请输入手机号/邮箱"
+              placeholder="请输入手机号"
               keyboardType="phone-pad"
+              maxLength={11}
               leftIcon={<Icon name="phone" />}
             />
             
             <View style={styles.inputSpacing} />
             
-            <Input
-              value={password}
-              onChangeText={setPassword}
-              placeholder="请输入密码"
-              secureTextEntry
-              leftIcon={<Icon name="lock" />}
-            />
-
-            {/* 辅助链接 */}
-            <View style={styles.linkContainer}>
-              <TouchableOpacity>
-                <Text style={styles.linkText}>忘记密码？</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => setIsLogin(!isLogin)}>
-                <Text style={styles.linkText}>
-                  {isLogin ? '注册账号' : '已有账号？登录'}
+            <View style={styles.codeRow}>
+              <View style={styles.codeInputWrapper}>
+                <Input
+                  value={code}
+                  onChangeText={setCode}
+                  placeholder="请输入验证码"
+                  keyboardType="numeric"
+                  maxLength={6}
+                  leftIcon={<Icon name="lock" />}
+                />
+              </View>
+              <TouchableOpacity
+                style={[
+                  styles.sendCodeButton,
+                  countdown > 0 && styles.sendCodeButtonDisabled,
+                ]}
+                onPress={handleSendSms}
+                disabled={countdown > 0}
+              >
+                <Text
+                  style={[
+                    styles.sendCodeText,
+                    countdown > 0 && styles.sendCodeTextDisabled,
+                  ]}
+                >
+                  {countdown > 0 ? `${countdown}s` : '获取验证码'}
                 </Text>
               </TouchableOpacity>
             </View>
 
+            <View style={styles.buttonSpacing} />
+
             {/* 登录按钮 */}
             <Button
-              title={isLogin ? '登录' : '注册'}
-              onPress={handleSubmit}
+              title="登录"
+              onPress={handleLogin}
+              loading={loading}
+              disabled={loading}
               fullWidth
             />
           </GlassCard>
-
-          {/* 第三方登录 */}
-          <View style={styles.thirdPartyContainer}>
-            <View style={styles.dividerContainer}>
-              <View style={styles.divider} />
-              <Text style={styles.dividerText}>其他登录方式</Text>
-              <View style={styles.divider} />
-            </View>
-
-            <View style={styles.thirdPartyButtons}>
-              <TouchableOpacity
-                style={styles.thirdPartyButton}
-                onPress={() => handleThirdPartyLogin('wechat')}
-              >
-                <Icon name="wechat" size={24} />
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.thirdPartyButton}
-                onPress={() => handleThirdPartyLogin('apple')}
-              >
-                <Icon name="apple" size={24} />
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.thirdPartyButton}
-                onPress={() => handleThirdPartyLogin('fingerprint')}
-              >
-                <Icon name="fingerprint" size={24} />
-              </TouchableOpacity>
-            </View>
-          </View>
 
           {/* 协议提示 */}
           <View style={styles.agreementContainer}>
@@ -201,15 +246,21 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.lg,
   },
   piggyBank: {
-    width: 70,
+    width: 64,
     height: 50,
     borderRadius: 25,
-    flexDirection: 'row',
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
     overflow: 'hidden',
-    ...Shadows.md,
+    flexDirection: 'row',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 8,
   },
   piggyHalf: {
     flex: 1,
+    opacity: 0.85,
   },
   piggyLeft: {
     backgroundColor: Colors.personal,
@@ -219,7 +270,7 @@ const styles = StyleSheet.create({
   },
   welcomeText: {
     fontSize: FontSize['2xl'],
-    fontWeight: FontWeight.semibold,
+    fontWeight: FontWeight.bold,
     color: Colors.text.primary,
     marginBottom: Spacing.sm,
   },
@@ -231,54 +282,40 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.xl,
   },
   inputSpacing: {
-    height: Spacing.lg,
+    height: Spacing.md,
   },
-  linkContainer: {
+  codeRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: Spacing.lg,
-    marginBottom: Spacing.xl,
+    alignItems: 'flex-end',
   },
-  linkText: {
-    fontSize: FontSize.sm,
-    color: Colors.text.secondary,
-  },
-  thirdPartyContainer: {
-    marginBottom: Spacing.xl,
-  },
-  dividerContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: Spacing.xl,
-  },
-  divider: {
+  codeInputWrapper: {
     flex: 1,
-    height: 1,
-    backgroundColor: Colors.border,
+    marginRight: Spacing.sm,
   },
-  dividerText: {
+  sendCodeButton: {
     paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    borderRadius: BorderRadius.md,
+    backgroundColor: Colors.primary.default,
+    marginBottom: 4,
+  },
+  sendCodeButtonDisabled: {
+    backgroundColor: Colors.gray[200],
+  },
+  sendCodeText: {
     fontSize: FontSize.sm,
+    color: Colors.text.inverse,
+    fontWeight: FontWeight.medium,
+  },
+  sendCodeTextDisabled: {
     color: Colors.text.tertiary,
   },
-  thirdPartyButtons: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: Spacing.xl,
-  },
-  thirdPartyButton: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: Colors.card,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-    ...Shadows.sm,
+  buttonSpacing: {
+    height: Spacing.xl,
   },
   agreementContainer: {
     alignItems: 'center',
+    marginTop: Spacing.xl,
   },
   agreementText: {
     fontSize: FontSize.xs,
@@ -286,7 +323,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   agreementLink: {
-    color: Colors.text.secondary,
-    textDecorationLine: 'underline',
+    color: Colors.primary.default,
   },
 });

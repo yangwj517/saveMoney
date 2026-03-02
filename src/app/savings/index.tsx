@@ -2,7 +2,7 @@
  * 攒钱记账 - 攒钱目标列表页
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -18,7 +18,7 @@ import { FontSize, FontWeight } from '@/constants/typography';
 import { BorderRadius, Spacing, Shadows, Sizes } from '@/constants/layout';
 import { Card } from '@/components/ui';
 import { AccountBookType, SavingsGoal } from '@/types';
-import { getSavingsGoalsByBookType, getDepositsByGoalId } from '@/mocks';
+import * as savingsService from '@/services/savings';
 
 type BookFilter = 'all' | 'personal' | 'business';
 
@@ -72,8 +72,6 @@ const GoalCard: React.FC<{
 }> = ({ goal, onPress }) => {
   const progress = (goal.currentAmount / goal.targetAmount) * 100;
   const bookColor = goal.bookType === 'personal' ? Colors.personal : Colors.business;
-  const deposits = getDepositsByGoalId(goal.id);
-  const lastDeposit = deposits[0];
 
   const formatAmount = (amount: number) => {
     return amount.toLocaleString('zh-CN', { minimumFractionDigits: 2 });
@@ -100,11 +98,6 @@ const GoalCard: React.FC<{
             <Text style={styles.goalAmount}>
               ¥{formatAmount(goal.currentAmount)} / ¥{formatAmount(goal.targetAmount)}
             </Text>
-            {lastDeposit && (
-              <Text style={styles.lastDeposit}>
-                最近存入: ¥{lastDeposit.amount}
-              </Text>
-            )}
           </View>
           
           {/* 右侧：进度 */}
@@ -120,10 +113,26 @@ const GoalCard: React.FC<{
 
 export default function SavingsListPage() {
   const [bookFilter, setBookFilter] = useState<BookFilter>('all');
+  const [goals, setGoals] = useState<any[]>([]);
 
-  const goals = getSavingsGoalsByBookType(
-    bookFilter === 'all' ? undefined : bookFilter
-  );
+  const fetchGoals = useCallback(async () => {
+    try {
+      if (bookFilter === 'all') {
+        const [p, b] = await Promise.all([
+          savingsService.getGoals('personal').catch(() => []),
+          savingsService.getGoals('business').catch(() => []),
+        ]);
+        setGoals([...(p || []), ...(b || [])]);
+      } else {
+        const data = await savingsService.getGoals(bookFilter);
+        setGoals(data || []);
+      }
+    } catch (e) {
+      setGoals([]);
+    }
+  }, [bookFilter]);
+
+  useEffect(() => { fetchGoals(); }, [fetchGoals]);
 
   const handleGoalPress = (goalId: string) => {
     // TODO: Navigate to goal detail

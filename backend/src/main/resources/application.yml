@@ -15,15 +15,24 @@ spring:
     username: saveManager      # ← 改成你的MySQL用户名
     password: secAdmin#1234      # ← 改成你的MySQL密码
 
-  # JPA持久化配置
+  # JPA 持久化配置
   jpa:
-    database-platform: org.hibernate.dialect.MySQLDialect  # MySQL方言
+    database-platform: org.hibernate.dialect.MySQLDialect  # MySQL 方言
     hibernate:
       ddl-auto: update  # 自动更新表结构（补齐缺失的列）
-    show-sql: false  # 是否打印SQL语句
+    show-sql: true  # 是否打印 SQL 语句
     properties:
       hibernate:
         format_sql: true
+
+  # 开启 SQL 和 JDBC 日志
+logging:
+  level:
+    root: INFO
+    com.zanqian.savemoney: DEBUG
+    org.springframework.web: DEBUG
+    org.hibernate.SQL: DEBUG
+    org.hibernate.type.descriptor.sql.BasicBinder: TRACE
 
   # Servlet配置
   servlet:

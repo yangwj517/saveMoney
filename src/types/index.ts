@@ -88,12 +88,58 @@ export interface SavingsDeposit {
 export interface Budget {
   id: string;
   categoryId?: string;
+  category?: Category;
   amount: number;
   usedAmount: number;
   period: 'monthly' | 'weekly' | 'yearly';
   bookType: AccountBookType;
   alertThreshold?: number;
   isAlertEnabled: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+// 提醒
+export interface Reminder {
+  id: string;
+  name: string;
+  amount: number;
+  dueDay: number;
+  categoryId?: string;
+  isEnabled: boolean;
+  note?: string;
+  createdAt: string;
+}
+
+// 提醒设置
+export interface ReminderSettings {
+  billReminder: boolean;
+  billReminderTime?: string;
+  savingsReminder: boolean;
+  savingsReminderTime?: string;
+  budgetAlert: boolean;
+  budgetAlertThreshold?: number;
+}
+
+// 通知
+export interface Notification {
+  id: string;
+  type: string;
+  title: string;
+  content: string;
+  isRead: boolean;
+  createdAt: string;
+}
+
+// 反馈
+export interface Feedback {
+  id: string;
+  type: string;
+  content: string;
+  contact?: string;
+  images?: string[];
+  status: string;
+  createdAt: string;
 }
 
 // 统计数据
@@ -129,12 +175,10 @@ export interface BookOverview {
   monthExpense: number;
 }
 
-// 提醒设置
-export interface ReminderSettings {
-  billReminder: boolean;
-  billReminderTime?: string;
-  savingsReminder: boolean;
-  savingsReminderTime?: string;
-  budgetAlert: boolean;
-  budgetAlertThreshold?: number;
+// 分页响应
+export interface PaginatedData<T> {
+  list: T[];
+  total: number;
+  page: number;
+  pageSize: number;
 }

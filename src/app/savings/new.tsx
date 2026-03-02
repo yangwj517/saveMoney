@@ -10,6 +10,7 @@ import {
   ScrollView,
   TouchableOpacity,
   TextInput,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -19,6 +20,7 @@ import { FontSize, FontWeight } from '@/constants/typography';
 import { BorderRadius, Spacing, Shadows } from '@/constants/layout';
 import { Card, Button } from '@/components/ui';
 import { AccountBookType } from '@/types';
+import * as savingsService from '@/services/savings';
 
 // 图标选项
 const ICONS = ['🎯', '🏠', '🚗', '✈️', '📱', '💻', '👜', '💍', '📚', '🎓', '🏥', '💰'];
@@ -41,29 +43,28 @@ export default function NewSavingsGoalPage() {
 
   const bookColor = bookType === 'personal' ? Colors.personal : Colors.business;
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!name.trim()) {
-      console.log('Please enter goal name');
+      Alert.alert('提示', '请输入目标名称');
       return;
     }
     if (!targetAmount || parseFloat(targetAmount) <= 0) {
-      console.log('Please enter valid target amount');
+      Alert.alert('提示', '请输入有效的目标金额');
       return;
     }
-    
-    const goal = {
-      bookType,
-      name,
-      targetAmount: parseFloat(targetAmount),
-      initialAmount: parseFloat(initialAmount) || 0,
-      deadline,
-      icon: selectedIcon,
-      color: selectedColor,
-      note,
-    };
-    
-    console.log('Create goal:', goal);
-    router.back();
+    try {
+      await savingsService.createGoal({
+        name,
+        targetAmount: parseFloat(targetAmount),
+        bookType,
+        deadline: deadline || undefined,
+        icon: selectedIcon,
+        color: selectedColor,
+      });
+      router.back();
+    } catch (e: any) {
+      Alert.alert('创建失败', e.message || '请稍后重试');
+    }
   };
 
   return (
