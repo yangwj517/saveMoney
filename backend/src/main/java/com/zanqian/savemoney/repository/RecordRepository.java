@@ -30,4 +30,12 @@ public interface RecordRepository extends JpaRepository<Record, String>, JpaSpec
             @Param("categoryId") String categoryId,
             @Param("startDate") LocalDate startDate,
             @Param("endDate") LocalDate endDate);
+
+    @Query("SELECT COALESCE(SUM(r.amount), 0) FROM Record r WHERE r.userId = :userId AND r.bookType = :bookType AND r.categoryId = :categoryId AND r.type = 'expense' AND r.date BETWEEN :startDate AND :endDate")
+    BigDecimal sumExpenseByBookTypeAndCategoryAndDateBetween(
+            @Param("userId") String userId,
+            @Param("bookType") String bookType,
+            @Param("categoryId") String categoryId,
+            @Param("startDate") LocalDate startDate,
+            @Param("endDate") LocalDate endDate);
 }

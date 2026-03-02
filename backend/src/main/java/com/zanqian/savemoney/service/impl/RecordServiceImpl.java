@@ -171,28 +171,38 @@ public class RecordServiceImpl implements RecordService {
         map.put("categoryId", r.getCategoryId());
 
         // Fetch category
-        categoryRepository.findById(r.getCategoryId()).ifPresent(cat -> {
-            Map<String, Object> catMap = new LinkedHashMap<>();
-            catMap.put("id", cat.getId());
-            catMap.put("name", cat.getName());
-            catMap.put("icon", cat.getIcon());
-            catMap.put("color", cat.getColor());
-            catMap.put("type", cat.getType());
-            catMap.put("bookType", cat.getBookType());
-            map.put("category", catMap);
-        });
+        if (r.getCategoryId() != null) {
+            categoryRepository.findById(r.getCategoryId()).ifPresent(cat -> {
+                Map<String, Object> catMap = new LinkedHashMap<>();
+                catMap.put("id", cat.getId());
+                catMap.put("name", cat.getName());
+                catMap.put("icon", cat.getIcon());
+                catMap.put("color", cat.getColor());
+                catMap.put("type", cat.getType());
+                catMap.put("bookType", cat.getBookType());
+                map.put("category", catMap);
+            });
+        }
+        if (!map.containsKey("category")) {
+            map.put("category", null);
+        }
 
         map.put("accountId", r.getAccountId());
 
         // Fetch account
-        accountRepository.findById(r.getAccountId()).ifPresent(acc -> {
-            Map<String, Object> accMap = new LinkedHashMap<>();
-            accMap.put("id", acc.getId());
-            accMap.put("name", acc.getName());
-            accMap.put("icon", acc.getIcon());
-            accMap.put("color", acc.getColor());
-            map.put("account", accMap);
-        });
+        if (r.getAccountId() != null) {
+            accountRepository.findById(r.getAccountId()).ifPresent(acc -> {
+                Map<String, Object> accMap = new LinkedHashMap<>();
+                accMap.put("id", acc.getId());
+                accMap.put("name", acc.getName());
+                accMap.put("icon", acc.getIcon());
+                accMap.put("color", acc.getColor());
+                map.put("account", accMap);
+            });
+        }
+        if (!map.containsKey("account")) {
+            map.put("account", null);
+        }
 
         map.put("bookType", r.getBookType());
         map.put("date", r.getDate() != null ? r.getDate().toString() : null);

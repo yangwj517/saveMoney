@@ -49,11 +49,15 @@ public class StatisticsServiceImpl implements StatisticsService {
                 .collect(Collectors.toList());
 
         // Category stats
-        BigDecimal totalFilteredAmount = filteredRecords.stream()
+        List<Record> filteredRecordsWithCategory = filteredRecords.stream()
+                .filter(r -> r.getCategoryId() != null)
+                .collect(Collectors.toList());
+
+        BigDecimal totalFilteredAmount = filteredRecordsWithCategory.stream()
                 .map(Record::getAmount)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-        Map<String, List<Record>> byCategoryId = filteredRecords.stream()
+        Map<String, List<Record>> byCategoryId = filteredRecordsWithCategory.stream()
                 .collect(Collectors.groupingBy(Record::getCategoryId));
 
         List<Map<String, Object>> categoryStats = new ArrayList<>();
