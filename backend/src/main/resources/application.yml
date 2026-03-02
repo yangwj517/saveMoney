@@ -8,25 +8,22 @@ server:
 
 # Spring框架配置
 spring:
-  # 数据源配置（使用H2内存数据库用于开发测试）
+  # 数据源配置（MySQL数据库）
   datasource:
-    url: jdbc:h2:mem:savemoney  # H2数据库连接URL
-    driver-class-name: org.h2.Driver  # 数据库驱动
-    username: sa  # 数据库用户名
-    password:  # 数据库密码（空）
-
-  # H2控制台配置
-  h2:
-    console:
-      enabled: true  # 启用H2控制台（用于开发调试）
-      path: /h2-console  # H2控制台访问路径
+    url: jdbc:mysql://https://47.108.67.45:3306/savemoney?useUnicode=true&characterEncoding=utf8mb4&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    username: saveManager      # ← 改成你的MySQL用户名
+    password: secAdmin#1234      # ← 改成你的MySQL密码
 
   # JPA持久化配置
   jpa:
-    database-platform: org.hibernate.dialect.H2Dialect  # 数据库方言
+    database-platform: org.hibernate.dialect.MySQLDialect  # MySQL方言
     hibernate:
-      ddl-auto: update  # 自动更新数据库表结构
+      ddl-auto: validate  # 仅验证表结构（建表由init.sql脚本完成）
     show-sql: false  # 是否打印SQL语句
+    properties:
+      hibernate:
+        format_sql: true
 
   # Servlet配置
   servlet:
