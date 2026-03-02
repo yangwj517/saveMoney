@@ -1,37 +1,56 @@
-server:
-  port: 8080
-  servlet:
-    context-path: /v1
+# 攒钱记账应用 - Spring Boot配置文件
 
+# 服务器配置
+server:
+  port: 8080  # 服务器端口号
+  servlet:
+    context-path: /v1  # API前缀路径
+
+# Spring框架配置
 spring:
+  # 数据源配置（使用H2内存数据库用于开发测试）
   datasource:
-    url: jdbc:h2:mem:savemoney
-    driver-class-name: org.h2.Driver
-    username: sa
-    password:
+    url: jdbc:h2:mem:savemoney  # H2数据库连接URL
+    driver-class-name: org.h2.Driver  # 数据库驱动
+    username: sa  # 数据库用户名
+    password:  # 数据库密码（空）
+
+  # H2控制台配置
   h2:
     console:
-      enabled: true
-      path: /h2-console
+      enabled: true  # 启用H2控制台（用于开发调试）
+      path: /h2-console  # H2控制台访问路径
+
+  # JPA持久化配置
   jpa:
-    database-platform: org.hibernate.dialect.H2Dialect
+    database-platform: org.hibernate.dialect.H2Dialect  # 数据库方言
     hibernate:
-      ddl-auto: update
-    show-sql: false
+      ddl-auto: update  # 自动更新数据库表结构
+    show-sql: false  # 是否打印SQL语句
+
+  # Servlet配置
   servlet:
     multipart:
-      max-file-size: 10MB
-      max-request-size: 10MB
-  jackson:
-    default-property-inclusion: always
+      max-file-size: 10MB  # 单个文件最大大小
+      max-request-size: 10MB  # 请求最大大小
 
+  # Jackson JSON配置
+  jackson:
+    default-property-inclusion: always  # 总是包含属性
+
+# 应用自定义配置
 app:
+  # JWT令牌配置
   jwt:
-    secret: zanqian-app-secret-key-for-jwt-token-signing-must-be-at-least-256-bits
-    expiration: 7200
-    refresh-expiration: 604800
+    secret: zanqian-app-secret-key-for-jwt-token-signing-must-be-at-least-256-bits  # JWT签名密钥
+    expiration: 7200  # Access Token过期时间（秒），2小时
+    refresh-expiration: 604800  # Refresh Token过期时间（秒），7天
+
+  # 文件上传配置
   upload:
-    path: ./uploads
-    url-prefix: https://cdn.zanqian.app
+    path: ./uploads  # 文件上传存储路径
+    url-prefix: https://cdn.zanqian.app  # 文件访问URL前缀
+
+  # 短信配置
   sms:
-    expire-seconds: 300
+    expire-seconds: 300  # 短信验证码有效期（秒），5分钟
