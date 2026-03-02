@@ -17,10 +17,20 @@ import org.springframework.web.filter.OncePerRequestFilter;
 import java.io.IOException;
 import java.util.Collections;
 
+/**
+ * JWT 认证过滤器
+ *
+ * 拦截每个请求，从请求头中获取 JWT token，进行验证和解析
+ * 如果验证成功，将用户信息设置到 Spring Security 的上下文中
+ * 允许请求继续执行，否则返回未授权错误
+ */
 @Component
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
+    /** JWT 工具类 */
     private final JwtUtil jwtUtil;
+
+    /** JSON 对象映射器 */
     private final ObjectMapper objectMapper;
 
     public JwtAuthenticationFilter(JwtUtil jwtUtil, ObjectMapper objectMapper) {
@@ -28,18 +38,37 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         this.objectMapper = objectMapper;
     }
 
+    /**
+     * 过滤器核心方法，在每个请求时执行一次
+     *
+     * 执行流程：
+     * 1. 从请求头中提取 JWT token
+     * 2. 如果存在 token，则验证其有效性
+     * 3. 若有效，从 token 中提取用户ID并设置到 Security Context
+     * 4. 若失效，返回 token 过期错误
+     * 5. 继续过滤链
+     *
+     * @param request HTTP 请求
+     * @param response HTTP 响应
+     * @param filterChain 过滤器链
+     * @throws ServletException Servlet 异常
+     * @throws IOException IO 异常
+     */
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
                                     FilterChain filterChain) throws ServletException, IOException {
+        // 从请求头中提取 token
         String token = extractToken(request);
 
         if (StringUtils.hasText(token)) {
             if (jwtUtil.validateToken(token)) {
+                // token 有效，提取用户ID并设置到 Security Context
                 String userId = jwtUtil.getUserIdFromToken(token);
                 UsernamePasswordAuthenticationToken authentication =
                         new UsernamePasswordAuthenticationToken(userId, null, Collections.emptyList());
                 SecurityContextHolder.getContext().setAuthentication(authentication);
             } else {
+                // token 已过期或无效，返回错误响应
                 response.setContentType("application/json;charset=UTF-8");
                 response.getWriter().write(objectMapper.writeValueAsString(
                         ApiResponse.error(ErrorCode.TOKEN_EXPIRED.getCode(), ErrorCode.TOKEN_EXPIRED.getMessage())));
@@ -47,9 +76,18 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             }
         }
 
+        // 继续执行过滤链
         filterChain.doFilter(request, response);
     }
 
+    /**
+     * 从 HTTP 请求头中提取 JWT token
+     *
+     * 从 Authorization 请求头中读取 "Bearer <token>" 格式的 token
+     *
+     * @param request HTTP 请求
+     * @return 提取的 token，如果不存在则返回 null
+     */
     private String extractToken(HttpServletRequest request) {
         String bearerToken = request.getHeader("Authorization");
         if (StringUtils.hasText(bearerToken) && bearerToken.startsWith("Bearer ")) {
