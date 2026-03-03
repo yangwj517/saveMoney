@@ -10,6 +10,7 @@ import com.zanqian.savemoney.repository.UserRepository;
 import com.zanqian.savemoney.service.AuthService;
 import lombok.Data;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -35,6 +36,9 @@ public class AuthServiceImpl implements AuthService {
 
     /** 安全随机数生成器，用于生成验证码 */
     private static final SecureRandom SECURE_RANDOM = new SecureRandom();
+
+    /** BCrypt 密码加密器 */
+    private static final BCryptPasswordEncoder PASSWORD_ENCODER = new BCryptPasswordEncoder();
 
     private final SmsCodeRepository smsCodeRepository;
     private final UserRepository userRepository;
@@ -150,12 +154,116 @@ public class AuthServiceImpl implements AuthService {
     }
 
     /**
+     * 使用手机号和密码登录
+     *
+     * 流程：
+     * 1. 验证手机号格式
+     * 2. 根据手机号查询用户
+     * 3. 验证密码是否正确
+     * 4. 生成 access token 和 refresh token
+     * 5. 返回用户信息和 token
+     *
+     * @param phone 手机号
+     * @param password 密码
+     * @return 包含 token、refreshToken、用户信息的 Map
+     * @throws BusinessException 如果手机号格式错误、用户不存在或密码错误
+     */
+    @Override
+    public Map<String, Object> loginByPassword(String phone, String password) {
+        // 验证手机号格式
+        validatePhone(phone);
+    
+        // 根据手机号查询用户
+        User user = userRepository.findByPhone(phone)
+                .orElseThrow(() -> new BusinessException(ErrorCode.DATA_NOT_FOUND, "用户不存在"));
+    
+        // 验证密码
+        if (user.getPassword() == null || !PASSWORD_ENCODER.matches(password, user.getPassword())) {
+            throw new BusinessException(ErrorCode.PARAM_ERROR, "密码错误");
+        }
+    
+        // 生成 access token 和 refresh token
+        String token = jwtUtil.generateToken(user.getId());
+        String refreshToken = jwtUtil.generateRefreshToken(user.getId());
+    
+        // 构建返回结果
+        return buildLoginResponse(user, token, refreshToken);
+    }
+    
+    /**
+     * 用户注册
+     *
+     * 流程：
+     * 1. 验证手机号格式
+     * 2. 检查手机号是否已注册
+     * 3. 验证短信验证码
+     * 4. 加密密码并创建用户
+     * 5. 标记验证码为已使用
+     * 6. 生成 access token 和 refresh token
+     * 7. 返回用户信息和 token
+     *
+     * @param phone 手机号
+     * @param password 密码
+     * @param code 验证码
+     * @return 包含 token、refreshToken、用户信息的 Map
+     * @throws BusinessException 如果手机号格式错误、已注册、验证码错误或已过期
+     */
+    @Override
+    @Transactional
+    public Map<String, Object> register(String phone, String password, String code) {
+        // 验证手机号格式
+        validatePhone(phone);
+    
+        // 检查手机号是否已注册
+        if (userRepository.findByPhone(phone).isPresent()) {
+            throw new BusinessException(ErrorCode.PARAM_ERROR, "该手机号已注册，请直接登录");
+        }
+    
+        // 查询最新的未使用验证码
+        SmsCode smsCode = smsCodeRepository.findFirstByPhoneAndUsedFalseOrderByExpireAtDesc(phone)
+                .orElseThrow(() -> new BusinessException(ErrorCode.PARAM_ERROR, "验证码错误或不存在"));
+    
+        // 检查验证码是否已过期
+        if (smsCode.getExpireAt().isBefore(Instant.now())) {
+            throw new BusinessException(ErrorCode.PARAM_ERROR, "验证码已过期，请重新获取");
+        }
+    
+        // 验证码是否正确
+        if (!smsCode.getCode().equals(code)) {
+            throw new BusinessException(ErrorCode.PARAM_ERROR, "验证码错误");
+        }
+    
+        // 创建新用户
+        User newUser = new User();
+        newUser.setPhone(phone);
+        // 默认昵称为 "用户" + 手机号后 4 位
+        newUser.setNickname("用户" + phone.substring(phone.length() - 4));
+        newUser.setAvatar("https://cdn.zanqian.app/avatar/default.png");
+        // 加密存储密码
+        newUser.setPassword(PASSWORD_ENCODER.encode(password));
+    
+        // 保存用户
+        userRepository.save(newUser);
+    
+        // 标记验证码为已使用
+        smsCode.setUsed(true);
+        smsCodeRepository.save(smsCode);
+    
+        // 生成 access token 和 refresh token
+        String token = jwtUtil.generateToken(newUser.getId());
+        String refreshToken = jwtUtil.generateRefreshToken(newUser.getId());
+    
+        // 构建返回结果
+        return buildLoginResponse(newUser, token, refreshToken);
+    }
+    
+    /**
      * 刷新令牌
      *
      * 使用 refresh token 生成新的 access token
      *
      * @param refreshToken 刷新令牌
-     * @return 包含新token和过期时间的Map
+     * @return 包含新 token 和过期时间的 Map
      * @throws BusinessException 如果刷新令牌已过期或无效
      */
     @Override

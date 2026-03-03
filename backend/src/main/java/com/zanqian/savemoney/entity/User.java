@@ -28,6 +28,9 @@ public class User {
     /** 用户手机号 */
     private String phone;
 
+    /** 用户密码（加密存储） */
+    private String password;
+
     /** 用户邮箱 */
     private String email;
 
