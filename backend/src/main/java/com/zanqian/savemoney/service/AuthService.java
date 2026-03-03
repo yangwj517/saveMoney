@@ -26,6 +26,25 @@ public interface AuthService {
     Map<String, Object> loginByPhone(String phone, String code);
 
     /**
+     * 使用手机号和密码登录
+     *
+     * @param phone 手机号
+     * @param password 密码
+     * @return 登录结果，包含 access token 和 refresh token
+     */
+    Map<String, Object> loginByPassword(String phone, String password);
+
+    /**
+     * 用户注册
+     *
+     * @param phone 手机号
+     * @param password 密码
+     * @param code 验证码
+     * @return 注册结果，包含 access token 和 refresh token
+     */
+    Map<String, Object> register(String phone, String password, String code);
+
+    /**
      * 刷新 access token
      *
      * @param refreshToken 刷新令牌

@@ -7,11 +7,11 @@
 -- 使用方法：mysql -u root -p < init.sql
 -- ============================================================
 
-CREATE DATABASE IF NOT EXISTS `savemoney`
+CREATE DATABASE IF NOT EXISTS `saveapp`
     DEFAULT CHARACTER SET utf8mb4
     DEFAULT COLLATE utf8mb4_unicode_ci;
 
-USE `savemoney`;
+USE `saveapp`;
 
 -- 先按照依赖顺序删除旧表（子表在前，父表在后）
 DROP TABLE IF EXISTS `sms_codes`;
@@ -32,10 +32,11 @@ DROP TABLE IF EXISTS `users`;
 -- 对应实体：User.java  |  表名：users
 -- ----------------------------------------------------------
 CREATE TABLE `users` (
-    `id`         VARCHAR(36)  NOT NULL COMMENT '用户ID（UUID）',
+    `id`         VARCHAR(36)  NOT NULL COMMENT '用户 ID（UUID）',
     `nickname`   VARCHAR(255) DEFAULT NULL COMMENT '昵称',
-    `avatar`     VARCHAR(255) DEFAULT NULL COMMENT '头像URL',
+    `avatar`     VARCHAR(255) DEFAULT NULL COMMENT '头像 URL',
     `phone`      VARCHAR(20)  DEFAULT NULL COMMENT '手机号',
+    `password`   VARCHAR(255) DEFAULT NULL COMMENT '密码（加密存储）',
     `email`      VARCHAR(255) DEFAULT NULL COMMENT '邮箱',
     `created_at` DATETIME(6)  DEFAULT NULL COMMENT '注册时间',
     PRIMARY KEY (`id`),

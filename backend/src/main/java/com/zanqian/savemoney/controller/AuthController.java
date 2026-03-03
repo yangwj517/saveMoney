@@ -1,8 +1,10 @@
 package com.zanqian.savemoney.controller;
 
 import com.zanqian.savemoney.common.ApiResponse;
+import com.zanqian.savemoney.dto.PasswordLoginRequest;
 import com.zanqian.savemoney.dto.PhoneLoginRequest;
 import com.zanqian.savemoney.dto.RefreshTokenRequest;
+import com.zanqian.savemoney.dto.RegisterRequest;
 import com.zanqian.savemoney.dto.SmsSendRequest;
 import com.zanqian.savemoney.service.AuthService;
 import jakarta.validation.Valid;
@@ -20,6 +22,8 @@ import java.util.Map;
  * 处理用户认证相关的操作：
  * - 发送短信验证码
  * - 使用手机号和验证码登录
+ * - 使用手机号和密码登录
+ * - 用户注册
  * - 刷新令牌
  * - 登出
  */
@@ -67,6 +71,34 @@ public class AuthController {
     @PostMapping("/login/phone")
     public ApiResponse<Map<String, Object>> loginByPhone(@Valid @RequestBody PhoneLoginRequest request) {
         return ApiResponse.success(authService.loginByPhone(request.getPhone(), request.getCode()));
+    }
+
+    /**
+     * 密码登录
+     *
+     * 使用手机号和密码进行登录
+     * 返回 access token 和 refresh token
+     *
+     * @param request 包含手机号和密码的请求
+     * @return 返回登录结果及 token 信息
+     */
+    @PostMapping("/login/password")
+    public ApiResponse<Map<String, Object>> loginByPassword(@Valid @RequestBody PasswordLoginRequest request) {
+        return ApiResponse.success(authService.loginByPassword(request.getPhone(), request.getPassword()));
+    }
+
+    /**
+     * 用户注册
+     *
+     * 使用手机号、密码和短信验证码进行注册
+     * 注册成功后自动登录，返回 access token 和 refresh token
+     *
+     * @param request 包含手机号、密码和验证码的请求
+     * @return 返回注册结果及 token 信息
+     */
+    @PostMapping("/register")
+    public ApiResponse<Map<String, Object>> register(@Valid @RequestBody RegisterRequest request) {
+        return ApiResponse.success(authService.register(request.getPhone(), request.getPassword(), request.getCode()));
     }
 
     /**
