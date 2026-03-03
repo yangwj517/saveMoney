@@ -14,10 +14,12 @@ import {
   Keyboard,
   Modal,
   FlatList,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { Colors, Gradients } from '@/constants/colors';
 import { Typography, FontSize, FontWeight } from '@/constants/typography';
 import { BorderRadius, Spacing, Shadows, Sizes } from '@/constants/layout';
@@ -169,6 +171,10 @@ export default function RecordPage() {
   const [accounts, setAccounts] = useState<any[]>([]);
   const [submitting, setSubmitting] = useState(false);
 
+  // 日期选择状态
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  const [showDatePicker, setShowDatePicker] = useState(false);
+
   // 账户选择器状态
   const [showAccountSelector, setShowAccountSelector] = useState(false);
 
@@ -249,6 +255,36 @@ export default function RecordPage() {
     setAmount('0');
   };
 
+  // 格式化日期显示
+  const formatDateDisplay = (date: Date) => {
+    const today = new Date();
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    
+    const isToday = date.toDateString() === today.toDateString();
+    const isYesterday = date.toDateString() === yesterday.toDateString();
+    
+    if (isToday) return '今天';
+    if (isYesterday) return '昨天';
+    
+    const month = date.getMonth() + 1;
+    const day = date.getDate();
+    return `${month}月${day}日`;
+  };
+
+  // 处理日期选择
+  const handleDateChange = (event: any, date?: Date) => {
+    if (Platform.OS === 'android') {
+      setShowDatePicker(false);
+    }
+    if (date) {
+      setSelectedDate(date);
+      if (Platform.OS === 'ios') {
+        setShowDatePicker(false);
+      }
+    }
+  };
+
   // 点击账户选择
   const handleAccountPress = () => {
     if (accounts.length === 0) {
@@ -304,14 +340,14 @@ export default function RecordPage() {
 
     setSubmitting(true);
     try {
-      const today = new Date().toISOString().split('T')[0];
+      const dateStr = selectedDate.toISOString().split('T')[0];
       await recordService.createRecord({
         amount: parseFloat(amount),
         type: transactionType,
         categoryId: selectedCategory,
         accountId: selectedAccount,
         bookType,
-        date: today,
+        date: dateStr,
         note: note || undefined,
       });
       
@@ -474,9 +510,9 @@ export default function RecordPage() {
 
         {/* 日期和账户信息 */}
         <View style={styles.infoRow}>
-          <TouchableOpacity style={styles.infoItem}>
+          <TouchableOpacity style={styles.infoItem} onPress={() => setShowDatePicker(true)}>
             <Text style={styles.infoLabel}>日期</Text>
-            <Text style={styles.infoValue}>今天</Text>
+            <Text style={styles.infoValue}>{formatDateDisplay(selectedDate)} ▼</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.infoItem} onPress={handleAccountPress}>
             <Text style={styles.infoLabel}>账户</Text>
@@ -486,6 +522,39 @@ export default function RecordPage() {
             </Text>
           </TouchableOpacity>
         </View>
+
+        {/* 日期选择器 */}
+        {showDatePicker && (
+          <Modal
+            visible={showDatePicker}
+            transparent
+            animationType="fade"
+            onRequestClose={() => setShowDatePicker(false)}
+          >
+            <TouchableOpacity 
+              style={styles.datePickerOverlay} 
+              activeOpacity={1} 
+              onPress={() => setShowDatePicker(false)}
+            >
+              <View style={styles.datePickerContainer}>
+                <View style={styles.datePickerHeader}>
+                  <Text style={styles.datePickerTitle}>选择日期</Text>
+                  <TouchableOpacity onPress={() => setShowDatePicker(false)}>
+                    <Text style={styles.datePickerDone}>完成</Text>
+                  </TouchableOpacity>
+                </View>
+                <DateTimePicker
+                  value={selectedDate}
+                  mode="date"
+                  display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                  onChange={handleDateChange}
+                  maximumDate={new Date()}
+                  locale="zh-CN"
+                />
+              </View>
+            </TouchableOpacity>
+          </Modal>
+        )}
       </ScrollView>
 
       {/* 数字键盘 - 备注输入时隐藏 */}
@@ -843,5 +912,38 @@ const styles: any = StyleSheet.create({
     fontSize: FontSize.lg,
     color: Colors.primary.default,
     fontWeight: FontWeight.bold,
+  },
+  // 日期选择器
+  datePickerOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  datePickerContainer: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: BorderRadius.xl,
+    width: width * 0.85,
+    maxWidth: 360,
+    padding: Spacing.base,
+  },
+  datePickerHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: Spacing.md,
+    paddingBottom: Spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.borderLight,
+  },
+  datePickerTitle: {
+    fontSize: FontSize.lg,
+    fontWeight: FontWeight.semibold,
+    color: Colors.text.primary,
+  },
+  datePickerDone: {
+    fontSize: FontSize.base,
+    color: Colors.primary.default,
+    fontWeight: FontWeight.medium,
   },
 });

@@ -93,45 +93,63 @@ const SimplePieChart: React.FC<{ data: any[] }> = ({ data }) => {
 };
 
 // 简单柱状图组件
-const SimpleBarChart: React.FC<{ timeFilter: TimeFilter }> = ({ timeFilter }) => {
-  // 根据时间维度生成不同的数据
+const SimpleBarChart: React.FC<{ timeFilter: TimeFilter; dailyStats: any[] }> = ({ timeFilter, dailyStats }) => {
+  // 根据时间维度聚合数据
   const getChartData = () => {
+    if (!dailyStats || dailyStats.length === 0) {
+      return [];
+    }
+
     switch (timeFilter) {
-      case 'week':
-        // 周视图：显示每日数据
-        return [
-          { label: '周一', expense: 120, income: 0 },
-          { label: '周二', expense: 85, income: 320 },
-          { label: '周三', expense: 200, income: 0 },
-          { label: '周四', expense: 150, income: 0 },
-          { label: '周五', expense: 180, income: 0 },
-          { label: '周六', expense: 250, income: 0 },
-          { label: '周日', expense: 95, income: 8500 },
-        ];
-      case 'month':
-        // 月视图：显示每周数据
-        return [
-          { label: '第1周', expense: 850, income: 2000 },
-          { label: '第2周', expense: 1200, income: 500 },
-          { label: '第3周', expense: 980, income: 3500 },
-          { label: '第4周', expense: 1320, income: 2820 },
-        ];
-      case 'year':
-        // 年视图：显示每月数据
-        return [
-          { label: '1月', expense: 4200, income: 8500 },
-          { label: '2月', expense: 3800, income: 8200 },
-          { label: '3月', expense: 4500, income: 9000 },
-          { label: '4月', expense: 4100, income: 8800 },
-          { label: '5月', expense: 3900, income: 8500 },
-          { label: '6月', expense: 4300, income: 9200 },
-          { label: '7月', expense: 4600, income: 8900 },
-          { label: '8月', expense: 4400, income: 9100 },
-          { label: '9月', expense: 4200, income: 8700 },
-          { label: '10月', expense: 4000, income: 8600 },
-          { label: '11月', expense: 4350, income: 8820 },
-          { label: '12月', expense: 4800, income: 9500 },
-        ];
+      case 'week': {
+        // 周视图：直接使用每日数据，显示星期几
+        const weekDays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+        return dailyStats.slice(-7).map((item) => {
+          const date = new Date(item.date);
+          return {
+            label: weekDays[date.getDay()],
+            expense: Number(item.expense) || 0,
+            income: Number(item.income) || 0,
+          };
+        });
+      }
+      case 'month': {
+        // 月视图：按周聚合数据
+        const weeklyData: { [key: string]: { expense: number; income: number } } = {};
+        dailyStats.forEach((item) => {
+          const date = new Date(item.date);
+          const weekNum = Math.ceil(date.getDate() / 7);
+          const key = `第${weekNum}周`;
+          if (!weeklyData[key]) {
+            weeklyData[key] = { expense: 0, income: 0 };
+          }
+          weeklyData[key].expense += Number(item.expense) || 0;
+          weeklyData[key].income += Number(item.income) || 0;
+        });
+        return Object.entries(weeklyData).map(([label, data]) => ({
+          label,
+          ...data,
+        }));
+      }
+      case 'year': {
+        // 年视图：按月聚合数据
+        const monthlyData: { [key: number]: { expense: number; income: number } } = {};
+        dailyStats.forEach((item) => {
+          const date = new Date(item.date);
+          const month = date.getMonth() + 1;
+          if (!monthlyData[month]) {
+            monthlyData[month] = { expense: 0, income: 0 };
+          }
+          monthlyData[month].expense += Number(item.expense) || 0;
+          monthlyData[month].income += Number(item.income) || 0;
+        });
+        return Object.entries(monthlyData)
+          .sort(([a], [b]) => Number(a) - Number(b))
+          .map(([month, data]) => ({
+            label: `${month}月`,
+            ...data,
+          }));
+      }
     }
   };
 
@@ -144,7 +162,16 @@ const SimpleBarChart: React.FC<{ timeFilter: TimeFilter }> = ({ timeFilter }) =>
   };
 
   const data = getChartData();
-  const maxValue = Math.max(...data.map(d => Math.max(d.expense, d.income)));
+  
+  if (data.length === 0) {
+    return (
+      <View style={styles.barChartContainer}>
+        <Text style={styles.emptyText}>暂无数据</Text>
+      </View>
+    );
+  }
+  
+  const maxValue = Math.max(...data.map(d => Math.max(d.expense, d.income)), 1);
   
   return (
     <View style={styles.barChartContainer}>
@@ -196,6 +223,7 @@ export default function StatsPage() {
   const [bookFilter, setBookFilter] = useState<BookFilter>('all');
   const [statsData, setStatsData] = useState<any>(null);
   const [categoryStats, setCategoryStats] = useState<any[]>([]);
+  const [dailyStats, setDailyStats] = useState<any[]>([]);
   const [totalExpense, setTotalExpense] = useState(0);
   const [totalIncome, setTotalIncome] = useState(0);
 
@@ -208,6 +236,7 @@ export default function StatsPage() {
       setTotalExpense(data?.totalExpense || 0);
       setTotalIncome(data?.totalIncome || 0);
       setCategoryStats(data?.categoryStats || []);
+      setDailyStats(data?.dailyStats || []);
     } catch (e) {
       console.log('Stats fetch error:', e);
     }
@@ -309,7 +338,7 @@ export default function StatsPage() {
           <Text style={styles.chartTitle}>
             {timeFilter === 'week' ? '每日收支对比' : timeFilter === 'month' ? '每周收支对比' : '每月收支对比'}
           </Text>
-          <SimpleBarChart timeFilter={timeFilter} />
+          <SimpleBarChart timeFilter={timeFilter} dailyStats={dailyStats} />
         </Card>
 
         {/* 分类明细 */}
@@ -513,6 +542,12 @@ const styles = StyleSheet.create({
   // 柱状图
   barChartContainer: {
     paddingTop: Spacing.md,
+  },
+  emptyText: {
+    fontSize: FontSize.sm,
+    color: Colors.text.tertiary,
+    textAlign: 'center',
+    paddingVertical: Spacing.xl,
   },
   barChartContent: {
     flexDirection: 'row',

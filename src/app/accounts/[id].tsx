@@ -131,6 +131,18 @@ export default function AccountDetailPage() {
         cash: 'wallet', bank: 'credit-card', alipay: 'mobile',
         wechat: 'comment', credit: 'credit-card', other: 'wallet',
       };
+      
+      // 如果设置为默认账户，需要先取消该账本下其他账户的默认状态
+      if (isDefault) {
+        const allAccounts = await accountService.getAccounts(bookType);
+        for (const acc of allAccounts) {
+          if (acc.id !== id && acc.isDefault) {
+            // 取消其他账户的默认状态
+            await accountService.updateAccount(acc.id, { isDefault: false });
+          }
+        }
+      }
+      
       await accountService.updateAccount(id!, {
         name,
         balance: parseFloat(balance) || 0,
