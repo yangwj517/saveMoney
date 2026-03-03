@@ -78,21 +78,34 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
         // 从请求头中提取 token
         String token = extractToken(request);
-
+        
+        logger.debug("JWT Filter - Request path: " + path);
+        logger.debug("JWT Filter - Token present: " + (token != null));
+        if (token != null) {
+            logger.debug("JWT Filter - Token starts with: " + token.substring(0, Math.min(20, token.length())));
+        }
+        
         if (StringUtils.hasText(token)) {
-            if (jwtUtil.validateToken(token)) {
-                // token 有效，提取用户ID并设置到 Security Context
+            boolean isValid = jwtUtil.validateToken(token);
+            logger.debug("JWT Filter - Token valid: " + isValid);
+                    
+            if (isValid) {
+                // token 有效，提取用户 ID 并设置到 Security Context
                 String userId = jwtUtil.getUserIdFromToken(token);
+                logger.debug("JWT Filter - User ID from token: " + userId);
                 UsernamePasswordAuthenticationToken authentication =
                         new UsernamePasswordAuthenticationToken(userId, null, Collections.emptyList());
                 SecurityContextHolder.getContext().setAuthentication(authentication);
             } else {
                 // token 已过期或无效，返回错误响应
+                logger.warn("JWT Filter - Token invalid or expired for path: " + path);
                 response.setContentType("application/json;charset=UTF-8");
                 response.getWriter().write(objectMapper.writeValueAsString(
                         ApiResponse.error(ErrorCode.TOKEN_EXPIRED.getCode(), ErrorCode.TOKEN_EXPIRED.getMessage())));
                 return;
             }
+        } else {
+            logger.warn("JWT Filter - No token found in request for path: " + path);
         }
 
         // 继续执行过滤链

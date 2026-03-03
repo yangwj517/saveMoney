@@ -441,8 +441,18 @@ public class RecordServiceImpl implements RecordService {
         Category category = categoryRepository.findById(categoryId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.DATA_NOT_FOUND, "分类不存在"));
 
-        if (!category.getUserId().equals(userId) || !category.getBookType().equals(bookType)) {
-            throw new BusinessException(ErrorCode.FORBIDDEN, "无权使用此分类");
+        // 预设分类（userId 为 null）所有人都可以使用，只需验证账本类型
+        // 用户自定义分类需要验证 userId 和 bookType
+        if (category.getUserId() != null) {
+            // 用户自定义分类
+            if (!category.getUserId().equals(userId) || !category.getBookType().equals(bookType)) {
+                throw new BusinessException(ErrorCode.FORBIDDEN, "无权使用此分类");
+            }
+        } else {
+            // 预设分类，只验证账本类型
+            if (!category.getBookType().equals(bookType)) {
+                throw new BusinessException(ErrorCode.FORBIDDEN, "无权使用此分类");
+            }
         }
     }
 
