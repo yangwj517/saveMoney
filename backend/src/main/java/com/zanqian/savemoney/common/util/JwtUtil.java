@@ -115,6 +115,7 @@ public class JwtUtil {
                     .verifyWith(getSigningKey())
                     .build()
                     .parseSignedClaims(token);
+            generateRefreshToken(getUserIdFromToken(token));
             return true;
         } catch (ExpiredJwtException e) {
             // token 已过期
