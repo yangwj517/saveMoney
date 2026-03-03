@@ -2,7 +2,7 @@
  * 攒钱记账 - 首页（今日概览）
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -24,6 +24,7 @@ import { useAuthStore } from '@/store/auth';
 import * as statisticsService from '@/services/statistics';
 import * as recordService from '@/services/record';
 import * as savingsService from '@/services/savings';
+import { useFocusEffect } from '@react-navigation/native';
 
 const { width } = Dimensions.get('window');
 
@@ -52,17 +53,16 @@ export default function HomePage() {
   const [loading, setLoading] = useState(true);
   const user = useAuthStore((s) => s.user);
 
-  const fetchData = useCallback(async () => {
+  // 获取概览数据
+  const fetchOverview = useCallback(async () => {
     try {
-      const [pOverview, bOverview, recordsData, goalsData] = await Promise.all([
+      const [pOverview, bOverview, goalsData] = await Promise.all([
         statisticsService.getOverview('personal').catch(() => null),
         statisticsService.getOverview('business').catch(() => null),
-        recordService.getRecords({ bookType: 'personal', page: 1, pageSize: 5 }).catch(() => ({ list: [] })),
         savingsService.getGoals('personal', false).catch(() => []),
       ]);
       setPersonalOverview(pOverview);
       setBusinessOverview(bOverview);
-      setRecentRecords(recordsData?.list || recordsData || []);
       setSavingsGoals(Array.isArray(goalsData) ? goalsData.slice(0, 2) : []);
     } catch (e) {
       console.log('Home fetch error:', e);
@@ -71,9 +71,30 @@ export default function HomePage() {
     }
   }, []);
 
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+  // 根据账本类型获取最近记录
+  const fetchRecords = useCallback(async (bookType: AccountBookType) => {
+    try {
+      const recordsData = await recordService.getRecords({ bookType, page: 1, pageSize: 5 }).catch(() => ({ list: [] }));
+      setRecentRecords(recordsData?.list || recordsData || []);
+    } catch (e) {
+      console.log('Records fetch error:', e);
+      setRecentRecords([]);
+    }
+  }, []);
+
+  // 页面获得焦点时自动刷新数据
+  useFocusEffect(
+    useCallback(() => {
+      fetchOverview();
+      fetchRecords(currentBook);
+    }, [fetchOverview, fetchRecords, currentBook])
+  );
+
+  // 切换账本时重新获取记录
+  const handleBookChange = (bookType: AccountBookType) => {
+    setCurrentBook(bookType);
+    fetchRecords(bookType);
+  };
 
   const personalBalance = personalOverview?.totalBalance || 0;
   const businessBalance = businessOverview?.totalBalance || 0;
@@ -113,7 +134,7 @@ export default function HomePage() {
               styles.bookTab,
               currentBook === 'personal' && styles.bookTabActivePersonal,
             ]}
-            onPress={() => setCurrentBook('personal')}
+            onPress={() => handleBookChange('personal')}
           >
             <Text
               style={[
@@ -130,7 +151,7 @@ export default function HomePage() {
               styles.bookTab,
               currentBook === 'business' && styles.bookTabActiveBusiness,
             ]}
-            onPress={() => setCurrentBook('business')}
+            onPress={() => handleBookChange('business')}
           >
             <Text
               style={[
@@ -152,7 +173,15 @@ export default function HomePage() {
                 <Text style={styles.assetLabel}>个人账本</Text>
               </View>
               <Text style={styles.assetAmount}>¥{formatAmount(personalBalance)}</Text>
-              <Text style={styles.assetChange}>今日 +¥{formatAmount(personalOverview?.todayIncome || 0)}</Text>
+              {(() => {
+                const netIncome = (personalOverview?.todayIncome || 0) - (personalOverview?.todayExpense || 0);
+                const isPositive = netIncome >= 0;
+                return (
+                  <Text style={[styles.assetChange, { color: isPositive ? Colors.income : Colors.expense }]}>
+                    今日 {isPositive ? '+' : ''}¥{formatAmount(netIncome)}
+                  </Text>
+                );
+              })()}
             </View>
             
             <View style={styles.assetDivider} />
@@ -163,7 +192,15 @@ export default function HomePage() {
                 <Text style={styles.assetLabel}>公司账本</Text>
               </View>
               <Text style={styles.assetAmount}>¥{formatAmount(businessBalance)}</Text>
-              <Text style={styles.assetChange}>今日 +¥{formatAmount(businessOverview?.todayIncome || 0)}</Text>
+              {(() => {
+                const netIncome = (businessOverview?.todayIncome || 0) - (businessOverview?.todayExpense || 0);
+                const isPositive = netIncome >= 0;
+                return (
+                  <Text style={[styles.assetChange, { color: isPositive ? Colors.income : Colors.expense }]}>
+                    今日 {isPositive ? '+' : ''}¥{formatAmount(netIncome)}
+                  </Text>
+                );
+              })()}
             </View>
           </View>
         </GlassCard>
@@ -191,7 +228,7 @@ export default function HomePage() {
           </TouchableOpacity>
         </View>
         
-        <Text style={styles.todayCount}>今日已记 3 笔</Text>
+        {/* <Text style={styles.todayCount}>今日已记 3 笔</Text> */}
 
         {/* 攒钱进度 */}
         <View style={styles.sectionHeader}>
@@ -241,7 +278,7 @@ export default function HomePage() {
         {/* 最近账单 */}
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>最近记录</Text>
-          <TouchableOpacity>
+          <TouchableOpacity onPress={() => router.push(`/records?bookType=${currentBook}` as any)}>
             <Text style={styles.sectionLink}>查看全部</Text>
           </TouchableOpacity>
         </View>

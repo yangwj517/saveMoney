@@ -4,9 +4,10 @@
 
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
 import { useAuthStore } from '@/store/auth';
+import { router } from 'expo-router';
 
 // 后端 API 基础地址
-export const BASE_URL = 'http://localhost:8080/v1';
+export const BASE_URL = 'http://47.108.67.45:8080/v1';
 
 // API 统一响应类型
 export interface ApiResponse<T = any> {
@@ -132,9 +133,25 @@ api.interceptors.response.use(
   }
 );
 
+// Token 过期错误码
+const TOKEN_EXPIRED_CODE = 20002;
+
+/**
+ * 处理登录过期，跳转到登录页
+ */
+const handleTokenExpired = () => {
+  const { logout } = useAuthStore.getState();
+  logout();
+  // 延迟跳转，避免在请求中直接导航
+  setTimeout(() => {
+    router.replace('/login');
+  }, 100);
+};
+
 /**
  * 解包 API 响应，提取 data 字段
  * 如果 code !== 0，抛出错误
+ * 如果 code === 20002，自动跳转登录页
  */
 export async function unwrap<T>(promise: Promise<{ data: ApiResponse<T> }>): Promise<T> {
   let response;
@@ -144,6 +161,11 @@ export async function unwrap<T>(promise: Promise<{ data: ApiResponse<T> }>): Pro
     // axios 网络 / HTTP 错误
     if (error.response) {
       const body = error.response.data;
+      // 检查是否是 token 过期错误
+      if (body && body.code === TOKEN_EXPIRED_CODE) {
+        handleTokenExpired();
+        throw new Error('登录已过期，请重新登录');
+      }
       if (body && body.message) {
         throw new Error(body.message);
       }
@@ -163,6 +185,12 @@ export async function unwrap<T>(promise: Promise<{ data: ApiResponse<T> }>): Pro
   // 服务端返回空响应
   if (!apiResponse) {
     throw new Error('服务器返回空响应');
+  }
+
+  // 检查是否是 token 过期错误
+  if (apiResponse.code === TOKEN_EXPIRED_CODE) {
+    handleTokenExpired();
+    throw new Error('登录已过期，请重新登录');
   }
 
   // 业务错误

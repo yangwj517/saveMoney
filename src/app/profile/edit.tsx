@@ -11,14 +11,13 @@ import {
   TouchableOpacity,
   TextInput,
   Image,
-  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Colors } from '@/constants/colors';
 import { FontSize, FontWeight } from '@/constants/typography';
 import { BorderRadius, Spacing, Shadows } from '@/constants/layout';
-import { Card } from '@/components/ui';
+import { Card, AlertModal } from '@/components/ui';
 import { useAuthStore } from '@/store/auth';
 import * as userService from '@/services/user';
 
@@ -64,8 +63,14 @@ export default function EditProfilePage() {
   const [nickname, setNickname] = useState(user?.nickname || '');
   const [phone, setPhone] = useState(user?.phone || '');
   const [email, setEmail] = useState(user?.email || '');
-  const [gender, setGender] = useState('男');
-  const [birthday, setBirthday] = useState('1990-01-01');
+  const [saving, setSaving] = useState(false);
+
+  // 弹框状态
+  const [alertVisible, setAlertVisible] = useState(false);
+  const [alertTitle, setAlertTitle] = useState('');
+  const [alertMessage, setAlertMessage] = useState('');
+  const [alertType, setAlertType] = useState<'info' | 'success' | 'error' | 'warning'>('info');
+  const [isSuccess, setIsSuccess] = useState(false);
 
   useEffect(() => {
     userService.getProfile().then((profile: any) => {
@@ -78,15 +83,38 @@ export default function EditProfilePage() {
   }, []);
 
   const handleSave = async () => {
+    if (saving) return;
+    setSaving(true);
     try {
       const updated = await userService.updateProfile({ nickname, email });
       if (updated) {
         setUserStore({ ...user!, nickname: updated.nickname || nickname, email: updated.email || email });
       }
-      router.back();
+      // 显示成功提示
+      setAlertTitle('保存成功');
+      setAlertMessage('您的资料已更新');
+      setAlertType('success');
+      setIsSuccess(true);
+      setAlertVisible(true);
     } catch (e: any) {
-      Alert.alert('保存失败', e.message || '请稍后重试');
+      // 显示失败提示
+      setAlertTitle('保存失败');
+      setAlertMessage(e.message || '请稍后重试');
+      setAlertType('error');
+      setIsSuccess(false);
+      setAlertVisible(true);
+    } finally {
+      setSaving(false);
     }
+  };
+
+  const handleAlertClose = () => {
+    setAlertVisible(false);
+    if (isSuccess) {
+      // 成功后返回上一页
+      router.back();
+    }
+    // 失败则停留在当前页面
   };
 
   const handleAvatarChange = () => {
@@ -102,8 +130,10 @@ export default function EditProfilePage() {
           <Text style={styles.backIcon}>‹</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>编辑资料</Text>
-        <TouchableOpacity style={styles.saveButton} onPress={handleSave}>
-          <Text style={styles.saveText}>保存</Text>
+        <TouchableOpacity style={styles.saveButton} onPress={handleSave} disabled={saving}>
+          <Text style={[styles.saveText, saving && styles.saveTextDisabled]}>
+            {saving ? '保存中...' : '保存'}
+          </Text>
         </TouchableOpacity>
       </View>
 
@@ -129,23 +159,6 @@ export default function EditProfilePage() {
             onChangeText={setNickname}
             placeholder="请输入昵称"
           />
-          <View style={styles.divider} />
-          <SelectItem
-            label="性别"
-            value={gender}
-            onPress={() => {
-              setGender(gender === '男' ? '女' : '男');
-            }}
-          />
-          <View style={styles.divider} />
-          <SelectItem
-            label="生日"
-            value={birthday}
-            onPress={() => {
-              // 选择生日
-              console.log('Select birthday');
-            }}
-          />
         </Card>
 
         {/* 联系方式 */}
@@ -167,29 +180,16 @@ export default function EditProfilePage() {
             keyboardType="email-address"
           />
         </Card>
-
-        {/* 账号安全 */}
-        <Card style={styles.section}>
-          <Text style={styles.sectionTitle}>账号安全</Text>
-          <SelectItem
-            label="修改密码"
-            value=""
-            onPress={() => console.log('Change password')}
-          />
-          <View style={styles.divider} />
-          <SelectItem
-            label="绑定微信"
-            value="已绑定"
-            onPress={() => console.log('Bindweixin')}
-          />
-          <View style={styles.divider} />
-          <SelectItem
-            label="注销账号"
-            value=""
-            onPress={() => console.log('Delete account')}
-          />
-        </Card>
       </ScrollView>
+
+      {/* 提示弹框 */}
+      <AlertModal
+        visible={alertVisible}
+        title={alertTitle}
+        message={alertMessage}
+        type={alertType}
+        onClose={handleAlertClose}
+      />
     </SafeAreaView>
   );
 }
@@ -230,6 +230,9 @@ const styles = StyleSheet.create({
     fontSize: FontSize.base,
     color: Colors.primary.default,
     fontWeight: FontWeight.medium,
+  },
+  saveTextDisabled: {
+    color: Colors.text.tertiary,
   },
   content: {
     flex: 1,

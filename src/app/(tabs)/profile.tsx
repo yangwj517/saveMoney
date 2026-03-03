@@ -2,7 +2,7 @@
  * 攒钱记账 - 个人中心页
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -20,6 +20,7 @@ import { useAuthStore } from '@/store/auth';
 import * as authServiceApi from '@/services/auth';
 import * as statisticsService from '@/services/statistics';
 import * as userService from '@/services/user';
+import { useFocusEffect } from '@react-navigation/native';
 
 // 菜单项组件
 const MenuItem: React.FC<{
@@ -62,10 +63,23 @@ export default function ProfilePage() {
   const [personalBalance, setPersonalBalance] = useState(0);
   const [businessBalance, setBusinessBalance] = useState(0);
 
-  useEffect(() => {
-    statisticsService.getOverview('personal').then((d) => setPersonalBalance(d?.totalBalance || 0)).catch(() => {});
-    statisticsService.getOverview('business').then((d) => setBusinessBalance(d?.totalBalance || 0)).catch(() => {});
+  const loadBalances = useCallback(async () => {
+    try {
+      const [pOverview, bOverview] = await Promise.all([
+        statisticsService.getOverview('personal').catch(() => null),
+        statisticsService.getOverview('business').catch(() => null),
+      ]);
+      setPersonalBalance(pOverview?.totalBalance || 0);
+      setBusinessBalance(bOverview?.totalBalance || 0);
+    } catch {}
   }, []);
+
+  // 页面获得焦点时自动刷新数据
+  useFocusEffect(
+    useCallback(() => {
+      loadBalances();
+    }, [loadBalances])
+  );
 
   const formatAmount = (amount: number) => {
     return amount.toLocaleString('zh-CN', { minimumFractionDigits: 2 });
