@@ -37,7 +37,7 @@ class SaveMoneyApplicationTests {
     void testSmsSend() throws Exception {
         mockMvc.perform(post("/auth/sms/send")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"phone\":\"13800138000\"}"))
+                        .content("{\"phone\":\"13488437203\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0))
                 .andExpect(jsonPath("$.data.expireIn").value(300));
@@ -57,13 +57,13 @@ class SaveMoneyApplicationTests {
         // First send SMS
         mockMvc.perform(post("/auth/sms/send")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"phone\":\"13800138001\"}"))
+                        .content("{\"phone\":\"13488437204\"}"))
                 .andExpect(status().isOk());
 
         // Try login with wrong code
         mockMvc.perform(post("/auth/login/phone")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"phone\":\"13800138001\",\"code\":\"000000\"}"))
+                        .content("{\"phone\":\"13488437204\",\"code\":\"000000\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(10001));
     }
@@ -71,7 +71,7 @@ class SaveMoneyApplicationTests {
     @Test
     @SuppressWarnings("unchecked")
     void testFullAuthFlow() throws Exception {
-        String phone = "13800138002";
+        String phone = "13488437205";
 
         // Send SMS
         mockMvc.perform(post("/auth/sms/send")
@@ -92,7 +92,7 @@ class SaveMoneyApplicationTests {
                 .andExpect(jsonPath("$.code").value(0))
                 .andExpect(jsonPath("$.data.token").isNotEmpty())
                 .andExpect(jsonPath("$.data.refreshToken").isNotEmpty())
-                .andExpect(jsonPath("$.data.user.phone").value("138****8002"))
+                .andExpect(jsonPath("$.data.user.phone").value("134****7205"))
                 .andReturn();
 
         Map<String, Object> loginResponse = objectMapper.readValue(
@@ -106,7 +106,7 @@ class SaveMoneyApplicationTests {
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0))
-                .andExpect(jsonPath("$.data.phone").value("138****8002"));
+                .andExpect(jsonPath("$.data.phone").value("134****7205"));
 
         // Test refresh token
         mockMvc.perform(post("/auth/token/refresh")
@@ -364,7 +364,7 @@ class SaveMoneyApplicationTests {
     @SuppressWarnings("unchecked")
     void testBudgetUsedAmountCalculation() throws Exception {
         // Setup: login a user
-        String phone = "13800138010";
+        String phone = "13488437210";
         mockMvc.perform(post("/auth/sms/send")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"phone\":\"" + phone + "\"}"))
@@ -446,7 +446,7 @@ class SaveMoneyApplicationTests {
     @SuppressWarnings("unchecked")
     void testNullFieldsPresent() throws Exception {
         // Setup: login a user
-        String phone = "13800138011";
+        String phone = "13488437211";
         mockMvc.perform(post("/auth/sms/send")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"phone\":\"" + phone + "\"}"))
@@ -485,7 +485,7 @@ class SaveMoneyApplicationTests {
     @Test
     void testAccountBookTypeValidation() throws Exception {
         // Setup: login
-        String phone = "13800138012";
+        String phone = "13488437212";
         mockMvc.perform(post("/auth/sms/send")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"phone\":\"" + phone + "\"}"))
