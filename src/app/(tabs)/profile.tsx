@@ -122,6 +122,8 @@ export default function ProfilePage() {
         <MenuGroup title="账本管理">
           <MenuItem icon="💳" title="账户管理" subtitle="管理各类账户" onPress={() => router.push('/accounts' as any)} />
           <View style={styles.menuDivider} />
+          <MenuItem icon="🏷️" title="收支分类" subtitle="管理收入支出分类" onPress={() => router.push('/categories' as any)} />
+          <View style={styles.menuDivider} />
           <MenuItem icon="📊" title="预算设置" subtitle="控制消费支出" onPress={() => router.push('/budget' as any)} />
           <View style={styles.menuDivider} />
           <MenuItem icon="⏰" title="账单提醒" subtitle="定时提醒记账" onPress={() => router.push('/reminders' as any)} />

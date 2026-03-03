@@ -274,7 +274,7 @@ export default function RegisterPage() {
   };
 
   const handleGoLogin = () => {
-    router.back();
+    router.replace('/login');
   };
 
   return (

@@ -3,6 +3,7 @@
  */
 
 import api, { unwrap } from './api';
+import { getDefaultCategories } from '@/constants/defaultCategories';
 
 export interface CategoryCreateParams {
   name: string;
@@ -21,11 +22,22 @@ export interface CategoryUpdateParams {
   order?: number;
 }
 
-/** 获取分类列表 */
+/** 获取分类列表 - 如果后端无数据，返回默认分类 */
 export async function getCategories(bookType: string, type?: string) {
-  return unwrap<any[]>(
-    api.get('/categories', { params: { bookType, type } })
-  );
+  try {
+    const result = await unwrap<any[]>(
+      api.get('/categories', { params: { bookType, type } })
+    );
+    // 如果后端返回数据，使用后端数据
+    if (result && result.length > 0) {
+      return result;
+    }
+    // 否则返回默认分类
+    return getDefaultCategories(bookType, type);
+  } catch {
+    // 请求失败时返回默认分类
+    return getDefaultCategories(bookType, type);
+  }
 }
 
 /** 创建分类 */

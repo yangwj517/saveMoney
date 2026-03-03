@@ -12,8 +12,8 @@ import {
   TextInput,
   Dimensions,
   Keyboard,
-  TouchableWithoutFeedback,
-  Alert,
+  Modal,
+  FlatList,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -21,13 +21,66 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Gradients } from '@/constants/colors';
 import { Typography, FontSize, FontWeight } from '@/constants/typography';
 import { BorderRadius, Spacing, Shadows, Sizes } from '@/constants/layout';
-import { Button, Card } from '@/components/ui';
+import { Button, Card, AlertModal } from '@/components/ui';
 import { AccountBookType, TransactionType, Category } from '@/types';
 import * as categoryService from '@/services/category';
 import * as recordService from '@/services/record';
 import * as accountService from '@/services/account';
 
-const { width } = Dimensions.get('window');
+const { width, height } = Dimensions.get('window');
+
+// 账户选择器组件
+const AccountSelector: React.FC<{
+  visible: boolean;
+  accounts: any[];
+  selectedId: string | null;
+  onSelect: (id: string) => void;
+  onClose: () => void;
+}> = ({ visible, accounts, selectedId, onSelect, onClose }) => {
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="slide"
+      onRequestClose={onClose}
+    >
+      <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={onClose}>
+        <View style={styles.accountSelectorContainer}>
+          <View style={styles.accountSelectorHandle} />
+          <Text style={styles.accountSelectorTitle}>选择账户</Text>
+          <FlatList
+            data={accounts}
+            keyExtractor={(item) => item.id}
+            style={styles.accountList}
+            renderItem={({ item }) => (
+              <TouchableOpacity
+                style={[
+                  styles.accountItem,
+                  selectedId === item.id && styles.accountItemSelected,
+                ]}
+                onPress={() => {
+                  onSelect(item.id);
+                  onClose();
+                }}
+              >
+                <View style={[styles.accountIcon, { backgroundColor: item.color || Colors.primary.default }]}>
+                  <Text style={styles.accountIconText}>{item.name.charAt(0)}</Text>
+                </View>
+                <View style={styles.accountInfo}>
+                  <Text style={styles.accountName}>{item.name}</Text>
+                  <Text style={styles.accountBalance}>余额: ¥{item.balance?.toFixed(2) || '0.00'}</Text>
+                </View>
+                {selectedId === item.id && (
+                  <Text style={styles.accountCheck}>✓</Text>
+                )}
+              </TouchableOpacity>
+            )}
+          />
+        </View>
+      </TouchableOpacity>
+    </Modal>
+  );
+};
 
 // 自定义数字键盘
 const NumericKeyboard: React.FC<{
@@ -35,7 +88,8 @@ const NumericKeyboard: React.FC<{
   onDelete: () => void;
   onClear: () => void;
   onConfirm: () => void;
-}> = ({ onInput, onDelete, onClear, onConfirm }) => {
+  loading?: boolean;
+}> = ({ onInput, onDelete, onClear, onConfirm, loading }) => {
   const keys = [
     ['1', '2', '3'],
     ['4', '5', '6'],
@@ -83,12 +137,16 @@ const NumericKeyboard: React.FC<{
         <TouchableOpacity style={styles.clearButton} onPress={onClear}>
           <Text style={styles.clearText}>清空</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.confirmButton} onPress={onConfirm}>
+        <TouchableOpacity 
+          style={[styles.confirmButton, loading && styles.confirmButtonDisabled]} 
+          onPress={onConfirm}
+          disabled={loading}
+        >
           <LinearGradient
             colors={Gradients.primary as [string, string]}
             style={styles.confirmGradient}
           >
-            <Text style={styles.confirmText}>完成</Text>
+            <Text style={styles.confirmText}>{loading ? '提交中...' : '提交'}</Text>
           </LinearGradient>
         </TouchableOpacity>
       </View>
@@ -109,15 +167,61 @@ export default function RecordPage() {
   const [isNoteFocused, setIsNoteFocused] = useState(false);
   const [categories, setCategories] = useState<any[]>([]);
   const [accounts, setAccounts] = useState<any[]>([]);
+  const [submitting, setSubmitting] = useState(false);
+
+  // 账户选择器状态
+  const [showAccountSelector, setShowAccountSelector] = useState(false);
+
+  // 弹框状态
+  const [alertVisible, setAlertVisible] = useState(false);
+  const [alertTitle, setAlertTitle] = useState('');
+  const [alertMessage, setAlertMessage] = useState('');
+  const [alertType, setAlertType] = useState<'info' | 'success' | 'error' | 'warning'>('info');
+  const [alertCallback, setAlertCallback] = useState<(() => void) | null>(null);
+
+  // 显示弹框
+  const showAlert = (
+    title: string,
+    message: string,
+    type: 'info' | 'success' | 'error' | 'warning' = 'info',
+    callback?: () => void
+  ) => {
+    setAlertTitle(title);
+    setAlertMessage(message);
+    setAlertType(type);
+    setAlertCallback(() => callback || null);
+    setAlertVisible(true);
+  };
+
+  // 关闭弹框
+  const handleAlertClose = () => {
+    setAlertVisible(false);
+    if (alertCallback) {
+      alertCallback();
+    }
+  };
 
   useEffect(() => {
-    categoryService.getCategories(bookType, transactionType).then(setCategories).catch(() => setCategories([]));
-    accountService.getAccounts(bookType).then((data) => {
-      setAccounts(data);
-      const defaultAcc = data.find((a: any) => a.isDefault) || data[0];
-      if (defaultAcc) setSelectedAccount(defaultAcc.id);
-    }).catch(() => setAccounts([]));
+    loadData();
   }, [bookType, transactionType]);
+
+  const loadData = async () => {
+    try {
+      const cats = await categoryService.getCategories(bookType, transactionType);
+      setCategories(cats);
+    } catch {
+      setCategories([]);
+    }
+
+    try {
+      const accs = await accountService.getAccounts(bookType);
+      setAccounts(accs);
+      const defaultAcc = accs.find((a: any) => a.isDefault) || accs[0];
+      if (defaultAcc) setSelectedAccount(defaultAcc.id);
+    } catch {
+      setAccounts([]);
+    }
+  };
 
   const bookColor = bookType === 'personal' ? Colors.personal : Colors.business;
 
@@ -145,19 +249,60 @@ export default function RecordPage() {
     setAmount('0');
   };
 
+  // 点击账户选择
+  const handleAccountPress = () => {
+    if (accounts.length === 0) {
+      // 无账户，提示创建
+      showAlert(
+        '暂无账户',
+        '您还没有创建任何账户，请先创建账户后再记账。',
+        'warning',
+        () => {
+          router.push('/accounts');
+        }
+      );
+    } else {
+      // 有账户，显示选择器
+      setShowAccountSelector(true);
+    }
+  };
+
+  // 清空表单数据
+  const resetForm = () => {
+    setAmount('0');
+    setSelectedCategory(null);
+    setNote('');
+  };
+
   const handleConfirm = async () => {
+    // 校验分类
     if (!selectedCategory) {
-      Alert.alert('提示', '请选择分类');
+      showAlert('提示', '请选择分类', 'warning');
       return;
     }
+    // 校验账户
     if (!selectedAccount) {
-      Alert.alert('提示', '请选择账户');
+      if (accounts.length === 0) {
+        showAlert(
+          '暂无账户',
+          '您还没有创建任何账户，请先创建账户后再记账。',
+          'warning',
+          () => {
+            router.push('/accounts');
+          }
+        );
+      } else {
+        showAlert('提示', '请选择账户', 'warning');
+      }
       return;
     }
+    // 校验金额
     if (amount === '0' || !parseFloat(amount)) {
-      Alert.alert('提示', '请输入金额');
+      showAlert('提示', '请输入金额', 'warning');
       return;
     }
+
+    setSubmitting(true);
     try {
       const today = new Date().toISOString().split('T')[0];
       await recordService.createRecord({
@@ -169,12 +314,21 @@ export default function RecordPage() {
         date: today,
         note: note || undefined,
       });
-      setAmount('0');
-      setSelectedCategory(null);
-      setNote('');
-      router.push('/(tabs)');
+      
+      // 记账成功弹框
+      showAlert(
+        '记账成功',
+        `已成功记录${transactionType === 'expense' ? '支出' : '收入'} ¥${amount}`,
+        'success',
+        () => {
+          // 清空数据，方便继续记账
+          resetForm();
+        }
+      );
     } catch (e: any) {
-      Alert.alert('保存失败', e.message || '请稍后重试');
+      showAlert('记账失败', e.message || '保存失败，请稍后重试', 'error');
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -289,7 +443,9 @@ export default function RecordPage() {
                 onPress={() => setSelectedCategory(category.id)}
               >
                 <View style={[styles.categoryIcon, { backgroundColor: category.color }]}>
-                  <Text style={styles.categoryIconText}>{category.name.charAt(0)}</Text>
+                  <Text style={styles.categoryIconText}>
+                    {category.icon || category.name.charAt(0)}
+                  </Text>
                 </View>
                 <Text style={styles.categoryName}>{category.name}</Text>
               </TouchableOpacity>
@@ -322,9 +478,12 @@ export default function RecordPage() {
             <Text style={styles.infoLabel}>日期</Text>
             <Text style={styles.infoValue}>今天</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.infoItem}>
+          <TouchableOpacity style={styles.infoItem} onPress={handleAccountPress}>
             <Text style={styles.infoLabel}>账户</Text>
-            <Text style={styles.infoValue}>{accounts.find((a: any) => a.id === selectedAccount)?.name || '请选择'}</Text>
+            <Text style={styles.infoValue}>
+              {accounts.find((a: any) => a.id === selectedAccount)?.name || '请选择'}
+              {' ▼'}
+            </Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -336,8 +495,27 @@ export default function RecordPage() {
           onDelete={handleDelete}
           onClear={handleClear}
           onConfirm={handleConfirm}
+          loading={submitting}
         />
       )}
+
+      {/* 账户选择器 */}
+      <AccountSelector
+        visible={showAccountSelector}
+        accounts={accounts}
+        selectedId={selectedAccount}
+        onSelect={setSelectedAccount}
+        onClose={() => setShowAccountSelector(false)}
+      />
+
+      {/* 自定义弹框 */}
+      <AlertModal
+        visible={alertVisible}
+        title={alertTitle}
+        message={alertMessage}
+        type={alertType}
+        onClose={handleAlertClose}
+      />
     </SafeAreaView>
   );
 }
@@ -577,6 +755,9 @@ const styles: any = StyleSheet.create({
   confirmButton: {
     flex: 1,
   },
+  confirmButtonDisabled: {
+    opacity: 0.6,
+  },
   confirmGradient: {
     flex: 1,
     borderRadius: BorderRadius.md,
@@ -587,5 +768,80 @@ const styles: any = StyleSheet.create({
     fontSize: FontSize.md,
     color: Colors.text.inverse,
     fontWeight: FontWeight.semibold,
+  },
+  // 弹出层
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  // 账户选择器
+  accountSelectorContainer: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: BorderRadius.xl,
+    borderTopRightRadius: BorderRadius.xl,
+    maxHeight: height * 0.5,
+    paddingBottom: Spacing['2xl'],
+  },
+  accountSelectorHandle: {
+    width: 40,
+    height: 4,
+    backgroundColor: Colors.gray[300],
+    borderRadius: 2,
+    alignSelf: 'center',
+    marginTop: Spacing.md,
+    marginBottom: Spacing.sm,
+  },
+  accountSelectorTitle: {
+    fontSize: FontSize.lg,
+    fontWeight: FontWeight.semibold,
+    color: Colors.text.primary,
+    textAlign: 'center',
+    marginBottom: Spacing.md,
+  },
+  accountList: {
+    paddingHorizontal: Spacing.base,
+  },
+  accountItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: Spacing.md,
+    borderRadius: BorderRadius.md,
+    marginBottom: Spacing.sm,
+    backgroundColor: Colors.gray[50],
+  },
+  accountItemSelected: {
+    backgroundColor: Colors.personalLight,
+  },
+  accountIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: Spacing.md,
+  },
+  accountIconText: {
+    fontSize: FontSize.lg,
+    color: Colors.text.inverse,
+    fontWeight: FontWeight.semibold,
+  },
+  accountInfo: {
+    flex: 1,
+  },
+  accountName: {
+    fontSize: FontSize.base,
+    fontWeight: FontWeight.medium,
+    color: Colors.text.primary,
+    marginBottom: 2,
+  },
+  accountBalance: {
+    fontSize: FontSize.sm,
+    color: Colors.text.tertiary,
+  },
+  accountCheck: {
+    fontSize: FontSize.lg,
+    color: Colors.primary.default,
+    fontWeight: FontWeight.bold,
   },
 });

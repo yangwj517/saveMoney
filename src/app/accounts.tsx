@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Gradients } from '@/constants/colors';
 import { FontSize, FontWeight } from '@/constants/typography';
@@ -67,7 +68,11 @@ export default function AccountsPage() {
     }
   }, [activeBook]);
 
-  useEffect(() => { fetchAccounts(); }, [fetchAccounts]);
+  useFocusEffect(
+    useCallback(() => {
+      fetchAccounts();
+    }, [fetchAccounts])
+  );
 
   const bookColor = activeBook === 'personal' ? Colors.personal : Colors.business;
   const totalBalance = accounts.reduce((sum: number, acc: any) => sum + (acc.balance || 0), 0);
@@ -77,7 +82,7 @@ export default function AccountsPage() {
   };
 
   const handleAccountPress = (accountId: string) => {
-    console.log('Edit account:', accountId);
+    router.push(`/accounts/${accountId}` as any);
   };
 
   return (
