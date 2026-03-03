@@ -36,10 +36,11 @@ public class CategoryServiceImpl implements CategoryService {
     /**
      * 获取分类列表
      *
-     * 根据用户ID和账簿类型获取分类列表
+     * 根据用户 ID 和账簿类型获取分类列表
      * 可选地按账单类型（收入/支出）进行筛选
+     * 包含预设分类（userId 为 null）和用户自定义分类
      *
-     * @param userId 用户ID
+     * @param userId 用户 ID
      * @param bookType 账簿类型
      * @param type 账单类型（可选，"income"收入或"expense"支出）
      * @return 分类列表
@@ -53,6 +54,18 @@ public class CategoryServiceImpl implements CategoryService {
         } else {
             categories = categoryRepository.findByUserIdAndBookType(userId, bookType);
         }
+            
+        // 添加预设分类（userId 为 null 的公共分类）
+        List<Category> presetCategories;
+        if (type != null && !type.isEmpty()) {
+            presetCategories = categoryRepository.findByUserIdIsNullAndBookTypeAndType(bookType, type);
+        } else {
+            presetCategories = categoryRepository.findByUserIdIsNullAndBookType(bookType);
+        }
+            
+        // 合并预设分类和用户自定义分类
+        categories.addAll(presetCategories);
+            
         return categories.stream().map(this::toMap).collect(Collectors.toList());
     }
 
@@ -86,10 +99,11 @@ public class CategoryServiceImpl implements CategoryService {
      * 更新分类
      *
      * 修改分类信息，需要权限验证
-     * 支持部分更新，只更新非null的字段
+     * 支持部分更新，只更新非 null 的字段
+     * 预设分类（userId 为 null）不支持修改
      *
-     * @param userId 用户ID
-     * @param id 分类ID
+     * @param userId 用户 ID
+     * @param id 分类 ID
      * @param request 分类更新请求
      * @return 更新后的分类信息
      * @throws BusinessException 如果分类不存在或无权操作
@@ -99,12 +113,15 @@ public class CategoryServiceImpl implements CategoryService {
     public Map<String, Object> updateCategory(String userId, String id, CategoryUpdateRequest request) {
         Category category = categoryRepository.findById(id)
                 .orElseThrow(() -> new BusinessException(ErrorCode.DATA_NOT_FOUND, "分类不存在"));
-
-        // 权限验证：只能修改属于自己的分类
+    
+        // 权限验证：只能修改属于自己的分类，预设分类不支持修改
+        if (category.getUserId() == null) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, "预设分类不支持修改");
+        }
         if (!category.getUserId().equals(userId)) {
             throw new BusinessException(ErrorCode.FORBIDDEN);
         }
-
+    
         // 选择性更新分类信息
         if (request.getName() != null) category.setName(request.getName());
         if (request.getIcon() != null) category.setIcon(request.getIcon());
@@ -118,9 +135,10 @@ public class CategoryServiceImpl implements CategoryService {
      * 删除分类
      *
      * 删除指定的分类，需要权限验证
+     * 预设分类（userId 为 null）不支持删除
      *
-     * @param userId 用户ID
-     * @param id 分类ID
+     * @param userId 用户 ID
+     * @param id 分类 ID
      * @throws BusinessException 如果分类不存在或无权操作
      */
     @Override
@@ -128,8 +146,11 @@ public class CategoryServiceImpl implements CategoryService {
     public void deleteCategory(String userId, String id) {
         Category category = categoryRepository.findById(id)
                 .orElseThrow(() -> new BusinessException(ErrorCode.DATA_NOT_FOUND, "分类不存在"));
-
-        // 权限验证：只能删除属于自己的分类
+    
+        // 权限验证：只能删除属于自己的分类，预设分类不支持删除
+        if (category.getUserId() == null) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, "预设分类不支持删除");
+        }
         if (!category.getUserId().equals(userId)) {
             throw new BusinessException(ErrorCode.FORBIDDEN);
         }

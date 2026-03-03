@@ -4,6 +4,7 @@ import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.ExpiredJwtException;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
+import lombok.Getter;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -21,15 +22,21 @@ import java.util.Date;
 public class JwtUtil {
 
     /** JWT 签名秘钥，从配置文件中读取 */
-    @Value("${app.jwt.secret}")
+    @Value("${app.jwt.secret:zanqian-app-secret-key-for-jwt-token-signing-must-be-at-least-256-bits-long-enough}")
     private String secret;
 
-    /** 访问令牌过期时间（秒） */
-    @Value("${app.jwt.expiration}")
+    /** 访问令牌过期时间（秒）
+     * -- GETTER --
+     *  获取 Access Token 的过期时间（秒）
+     *
+     * @return access token 有效期长度（秒）
+     */
+    @Getter
+    @Value("${app.jwt.expiration:7200}")
     private long expiration;
 
     /** 刷新令牌过期时间（秒） */
-    @Value("${app.jwt.refresh-expiration}")
+    @Value("${app.jwt.refresh-expiration:604800}")
     private long refreshExpiration;
 
     /**
@@ -111,19 +118,21 @@ public class JwtUtil {
             return true;
         } catch (ExpiredJwtException e) {
             // token 已过期
+            System.err.println("JWT 验证失败 - Token 已过期：" + e.getMessage());
+            return false;
+        } catch (io.jsonwebtoken.security.SignatureException e) {
+            // 签名不匹配
+            System.err.println("JWT 验证失败 - 签名不匹配：" + e.getMessage());
+            return false;
+        } catch (io.jsonwebtoken.MalformedJwtException e) {
+            // token 格式不正确
+            System.err.println("JWT 验证失败 - Token 格式错误：" + e.getMessage());
             return false;
         } catch (Exception e) {
             // token 无效或其他错误
+            System.err.println("JWT 验证失败 - 其他错误：" + e.getClass().getName() + ": " + e.getMessage());
             return false;
         }
     }
 
-    /**
-     * 获取 Access Token 的过期时间（秒）
-     *
-     * @return access token 有效期长度（秒）
-     */
-    public long getExpiration() {
-        return expiration;
-    }
 }

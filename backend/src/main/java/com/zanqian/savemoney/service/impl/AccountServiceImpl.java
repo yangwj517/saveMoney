@@ -53,10 +53,11 @@ public class AccountServiceImpl implements AccountService {
      * 创建账户
      *
      * 创建一个新的资金账户
-     * 如果初始余额为空，默认设为0
-     * 如果默认标志为空，默认设为false
+     * 如果初始余额为空，默认设为 0
+     * 如果默认标志为空，默认设为 false
+     * 如果设置为默认账户，会自动取消该账本下其他账户的默认状态
      *
-     * @param userId 用户ID
+     * @param userId 用户 ID
      * @param request 账户创建请求
      * @return 创建后的账户信息
      */
@@ -66,13 +67,26 @@ public class AccountServiceImpl implements AccountService {
         Account account = new Account();
         account.setUserId(userId);
         account.setName(request.getName());
-        // 初始余额，如果未提供则默认为0
+        // 初始余额，如果未提供则默认为 0
         account.setBalance(request.getBalance() != null ? request.getBalance() : BigDecimal.ZERO);
         account.setIcon(request.getIcon());
         account.setColor(request.getColor());
         account.setBookType(request.getBookType());
-        // 是否为默认账户，如果未提供则默认为false
-        account.setIsDefault(request.getIsDefault() != null ? request.getIsDefault() : false);
+        // 是否为默认账户，如果未提供则默认为 false
+        Boolean isDefault = request.getIsDefault() != null ? request.getIsDefault() : false;
+            
+        // 如果设置为默认账户，需要先取消该账本下其他账户的默认状态
+        if (isDefault) {
+            List<Account> accountsInBook = accountRepository.findByUserIdAndBookType(userId, request.getBookType());
+            for (Account acc : accountsInBook) {
+                if (acc.getIsDefault()) {
+                    acc.setIsDefault(false);
+                    accountRepository.save(acc);
+                }
+            }
+        }
+            
+        account.setIsDefault(isDefault);
         accountRepository.save(account);
         return toMap(account);
     }
@@ -81,10 +95,11 @@ public class AccountServiceImpl implements AccountService {
      * 更新账户
      *
      * 修改账户信息，需要权限验证
-     * 支持部分更新，只更新非null的字段
+     * 支持部分更新，只更新非 null 的字段
+     * 如果设置为默认账户，会自动取消该账本下其他账户的默认状态
      *
-     * @param userId 用户ID
-     * @param id 账户ID
+     * @param userId 用户 ID
+     * @param id 账户 ID
      * @param request 账户更新请求
      * @return 更新后的账户信息
      * @throws BusinessException 如果账户不存在或无权操作
@@ -94,12 +109,23 @@ public class AccountServiceImpl implements AccountService {
     public Map<String, Object> updateAccount(String userId, String id, AccountUpdateRequest request) {
         Account account = accountRepository.findById(id)
                 .orElseThrow(() -> new BusinessException(ErrorCode.DATA_NOT_FOUND, "账户不存在"));
-
+    
         // 权限验证：只能修改属于自己的账户
         if (!account.getUserId().equals(userId)) {
             throw new BusinessException(ErrorCode.FORBIDDEN);
         }
-
+    
+        // 如果设置为默认账户，需要先取消该账本下其他账户的默认状态
+        if (request.getIsDefault() != null && request.getIsDefault()) {
+            List<Account> accountsInBook = accountRepository.findByUserIdAndBookType(userId, account.getBookType());
+            for (Account acc : accountsInBook) {
+                if (!acc.getId().equals(id) && acc.getIsDefault()) {
+                    acc.setIsDefault(false);
+                    accountRepository.save(acc);
+                }
+            }
+        }
+    
         // 选择性更新账户信息
         if (request.getName() != null) account.setName(request.getName());
         if (request.getBalance() != null) account.setBalance(request.getBalance());
