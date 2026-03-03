@@ -8,12 +8,14 @@ import com.zanqian.savemoney.entity.User;
 import com.zanqian.savemoney.repository.SmsCodeRepository;
 import com.zanqian.savemoney.repository.UserRepository;
 import com.zanqian.savemoney.service.AuthService;
+import lombok.Data;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.security.SecureRandom;
 import java.time.Instant;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -28,6 +30,7 @@ import java.util.Map;
  * - 用户登出
  */
 @Service
+@Data
 public class AuthServiceImpl implements AuthService {
 
     /** 安全随机数生成器，用于生成验证码 */
@@ -36,6 +39,9 @@ public class AuthServiceImpl implements AuthService {
     private final SmsCodeRepository smsCodeRepository;
     private final UserRepository userRepository;
     private final JwtUtil jwtUtil;
+
+    @Value("${user.approve.phones}")
+    private String[] phones ;
 
     /** 短信验证码过期时间（秒），从配置文件注入 */
     @Value("${app.sms.expire-seconds:300}")
@@ -63,14 +69,11 @@ public class AuthServiceImpl implements AuthService {
     @Override
     @Transactional
     public Map<String, Object> sendSmsCode(String phone) {
-        System.out.println("[DEBUG] sendSmsCode called with phone: " + phone);
-            
         // 验证手机号格式
         validatePhone(phone);
-    
         // 生成 6 位数字验证码
         String code = String.format("%06d", SECURE_RANDOM.nextInt(1000000));
-        System.out.println("[DEBUG] Generated SMS code: " + code + " for phone: " + phone);
+        //System.out.println("[DEBUG] Generated SMS code: " + code + " for phone: " + phone);
     
         // 创建并保存短信验证码记录
         SmsCode smsCode = new SmsCode();
@@ -79,9 +82,9 @@ public class AuthServiceImpl implements AuthService {
         smsCode.setExpireAt(Instant.now().plusSeconds(smsExpireSeconds));
         smsCode.setUsed(false);
             
-        System.out.println("[DEBUG] Saving SMS code to database...");
+        //System.out.println("[DEBUG] Saving SMS code to database...");
         smsCodeRepository.save(smsCode);
-        System.out.println("[DEBUG] SMS code saved successfully with ID: " + smsCode.getId());
+        //System.out.println("[DEBUG] SMS code saved successfully with ID: " + smsCode.getId());
     
         // TODO: 调用短信服务发送验证码
         // smsService.sendSms(phone, code);
@@ -89,7 +92,8 @@ public class AuthServiceImpl implements AuthService {
         // 返回过期时间信息
         Map<String, Object> result = new HashMap<>();
         result.put("expireIn", smsExpireSeconds);
-        System.out.println("[DEBUG] sendSmsCode completed, returning expireIn: " + smsExpireSeconds);
+        result.put("smCode",code);
+        //System.out.println("[DEBUG] sendSmsCode completed, returning expireIn: " + smsExpireSeconds);
         return result;
     }
 
@@ -201,14 +205,19 @@ public class AuthServiceImpl implements AuthService {
      * @throws BusinessException 如果手机号格式错误
      */
     private void validatePhone(String phone) {
+
         if (phone == null || phone.trim().isEmpty()) {
             throw new BusinessException(ErrorCode.PARAM_ERROR, "手机号不能为空");
         }
-
         // 简单的手机号格式验证（11位数字，以1开头）
         if (!phone.matches("^1[3-9]\\d{9}$")) {
             throw new BusinessException(ErrorCode.PARAM_ERROR, "手机号格式错误");
         }
+        // 因只给部分人使用，故预定义一部分手机号
+        if(!Arrays.stream(phones).anyMatch(phone :: equals)){
+            throw new BusinessException(ErrorCode.PARAM_ERROR, "非常抱歉，本系统不支持该手机号");
+        }
+
     }
 
     /**

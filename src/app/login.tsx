@@ -1,8 +1,8 @@
 /**
- * 攒钱记账 - 登录/注册页
+ * 攒钱记账 - 登录页
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -12,18 +12,18 @@ import {
   Platform,
   ScrollView,
   Dimensions,
-  Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
-import { Colors, Gradients } from '@/constants/colors';
-import { Typography, FontSize, FontWeight } from '@/constants/typography';
-import { BorderRadius, Spacing, Shadows } from '@/constants/layout';
-import { Button, Input, GlassCard } from '@/components/ui';
+import { Colors } from '@/constants/colors';
+import { FontSize, FontWeight } from '@/constants/typography';
+import { Spacing } from '@/constants/layout';
+import { Button, Input, GlassCard, AlertModal } from '@/components/ui';
 import { useAuthStore } from '@/store/auth';
 import * as authService from '@/services/auth';
+import { ALLOWED_PHONES, ENABLE_PHONE_WHITELIST } from '@/constants/config';
 
-const { width, height } = Dimensions.get('window');
+const { height } = Dimensions.get('window');
 
 // 简单图标组件
 const Icon: React.FC<{ name: string; color?: string; size?: number }> = ({ 
@@ -34,9 +34,6 @@ const Icon: React.FC<{ name: string; color?: string; size?: number }> = ({
   const iconMap: Record<string, string> = {
     phone: '📱',
     lock: '🔒',
-    wechat: '💬',
-    apple: '🍎',
-    fingerprint: '👆',
   };
   
   return (
@@ -46,65 +43,86 @@ const Icon: React.FC<{ name: string; color?: string; size?: number }> = ({
   );
 };
 
+// 手机号校验
+const validatePhone = (phone: string): string | null => {
+  if (!phone.trim()) {
+    return '请输入手机号';
+  }
+  if (!/^1\d{10}$/.test(phone)) {
+    return '请输入正确的11位手机号';
+  }
+  return null;
+};
+
+// 手机号白名单校验
+const validatePhoneWhitelist = (phone: string): string | null => {
+  if (ENABLE_PHONE_WHITELIST && !ALLOWED_PHONES.includes(phone)) {
+    return '该手机号暂不支持登录，请联系管理员';
+  }
+  return null;
+};
+
+// 密码校验
+const validatePassword = (password: string): string | null => {
+  if (!password.trim()) {
+    return '请输入密码';
+  }
+  if (password.length < 6) {
+    return '密码长度不能少于6位';
+  }
+  return null;
+};
+
 export default function LoginPage() {
   const [phone, setPhone] = useState('');
-  const [code, setCode] = useState('');
-  const [countdown, setCountdown] = useState(0);
+  const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // 弹框状态
+  const [alertVisible, setAlertVisible] = useState(false);
+  const [alertTitle, setAlertTitle] = useState('');
+  const [alertMessage, setAlertMessage] = useState('');
+  const [alertType, setAlertType] = useState<'info' | 'success' | 'error' | 'warning'>('info');
 
   const { setTokens, setUser } = useAuthStore();
 
-  useEffect(() => {
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-    };
-  }, []);
-
-  const handleSendSms = async () => {
-    if (!phone.trim() || phone.length < 11) {
-      Alert.alert('提示','请输入正确的手机号');
-      return;
-    }
-    try {
-      // 使用 authService 发送短信
-      const result = await authService.sendSms(phone);
-      console.log('[SMS] success:', result);
-        
-      Alert.alert('发送成功', '验证码已发送，过期时间：' + (result.expireIn || '未知') + '秒');
-      setCountdown(60);
-      timerRef.current = setInterval(() => {
-        setCountdown((prev) => {
-          if (prev <= 1) {
-            if (timerRef.current) clearInterval(timerRef.current);
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-    } catch (e: any) {
-      console.log('[SMS] error:', e);
-      Alert.alert('发送失败', e.message || '请稍后重试');
-    }
+  // 显示弹框
+  const showAlert = (title: string, message: string, type: 'info' | 'success' | 'error' | 'warning' = 'info') => {
+    setAlertTitle(title);
+    setAlertMessage(message);
+    setAlertType(type);
+    setAlertVisible(true);
   };
 
   const handleLogin = async () => {
-    if (!phone.trim()) {
-      Alert.alert('提示', '请输入手机号');
+    // 前端校验 - 手机号格式
+    const phoneError = validatePhone(phone);
+    if (phoneError) {
+      showAlert('输入错误', phoneError, 'warning');
       return;
     }
-    if (!code.trim()) {
-      Alert.alert('提示', '请输入验证码');
+
+    // 前端校验 - 手机号白名单
+    const whitelistError = validatePhoneWhitelist(phone);
+    if (whitelistError) {
+      showAlert('手机号受限', whitelistError, 'error');
       return;
     }
+
+    // 前端校验 - 密码
+    const passwordError = validatePassword(password);
+    if (passwordError) {
+      showAlert('输入错误', passwordError, 'warning');
+      return;
+    }
+
     setLoading(true);
     try {
-      // 使用 authService 登录
-      const result = await authService.loginByPhone(phone, code);
+      const result = await authService.loginByPassword(phone, password);
       console.log('[Login] success:', result);
         
       if (!result.token) {
-        Alert.alert('登录异常', '响应中无 token 字段');
+        showAlert('登录异常', '服务器响应异常，请稍后重试', 'error');
         return;
       }
   
@@ -115,10 +133,15 @@ export default function LoginPage() {
       router.replace('/(tabs)');
     } catch (e: any) {
       console.log('[Login] error:', e);
-      Alert.alert('登录失败', e.message || '请稍后重试');
+      const errorMessage = e.message || '登录失败，请稍后重试';
+      showAlert('登录失败', errorMessage, 'error');
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleGoRegister = () => {
+    router.push('/register');
   };
 
   return (
@@ -147,7 +170,7 @@ export default function LoginPage() {
             </View>
             <Text style={styles.welcomeText}>欢迎使用攒钱记账</Text>
             <Text style={styles.subtitleText}>
-              使用手机号验证码快速登录
+              使用手机号和密码登录
             </Text>
           </View>
 
@@ -164,35 +187,13 @@ export default function LoginPage() {
             
             <View style={styles.inputSpacing} />
             
-            <View style={styles.codeRow}>
-              <View style={styles.codeInputWrapper}>
-                <Input
-                  value={code}
-                  onChangeText={setCode}
-                  placeholder="请输入验证码"
-                  keyboardType="numeric"
-                  maxLength={6}
-                  leftIcon={<Icon name="lock" />}
-                />
-              </View>
-              <TouchableOpacity
-                style={[
-                  styles.sendCodeButton,
-                  countdown > 0 && styles.sendCodeButtonDisabled,
-                ]}
-                onPress={handleSendSms}
-                disabled={countdown > 0}
-              >
-                <Text
-                  style={[
-                    styles.sendCodeText,
-                    countdown > 0 && styles.sendCodeTextDisabled,
-                  ]}
-                >
-                  {countdown > 0 ? `${countdown}s` : '获取验证码'}
-                </Text>
-              </TouchableOpacity>
-            </View>
+            <Input
+              value={password}
+              onChangeText={setPassword}
+              placeholder="请输入密码"
+              secureTextEntry
+              leftIcon={<Icon name="lock" />}
+            />
 
             <View style={styles.buttonSpacing} />
 
@@ -204,6 +205,14 @@ export default function LoginPage() {
               disabled={loading}
               fullWidth
             />
+
+            {/* 注册链接 */}
+            <View style={styles.registerRow}>
+              <Text style={styles.registerHint}>还没有账号？</Text>
+              <TouchableOpacity onPress={handleGoRegister}>
+                <Text style={styles.registerLink}>立即注册</Text>
+              </TouchableOpacity>
+            </View>
           </GlassCard>
 
           {/* 协议提示 */}
@@ -217,6 +226,15 @@ export default function LoginPage() {
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      {/* 自定义弹框 */}
+      <AlertModal
+        visible={alertVisible}
+        title={alertTitle}
+        message={alertMessage}
+        type={alertType}
+        onClose={() => setAlertVisible(false)}
+      />
     </LinearGradient>
   );
 }
@@ -284,34 +302,24 @@ const styles = StyleSheet.create({
   inputSpacing: {
     height: Spacing.md,
   },
-  codeRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-  },
-  codeInputWrapper: {
-    flex: 1,
-    marginRight: Spacing.sm,
-  },
-  sendCodeButton: {
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
-    borderRadius: BorderRadius.md,
-    backgroundColor: Colors.primary.default,
-    marginBottom: 4,
-  },
-  sendCodeButtonDisabled: {
-    backgroundColor: Colors.gray[200],
-  },
-  sendCodeText: {
-    fontSize: FontSize.sm,
-    color: Colors.text.inverse,
-    fontWeight: FontWeight.medium,
-  },
-  sendCodeTextDisabled: {
-    color: Colors.text.tertiary,
-  },
   buttonSpacing: {
     height: Spacing.xl,
+  },
+  registerRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: Spacing.lg,
+  },
+  registerHint: {
+    fontSize: FontSize.sm,
+    color: Colors.text.tertiary,
+  },
+  registerLink: {
+    fontSize: FontSize.sm,
+    color: Colors.primary.default,
+    fontWeight: FontWeight.medium,
+    marginLeft: Spacing.xs,
   },
   agreementContainer: {
     alignItems: 'center',

@@ -70,3 +70,7 @@ springdoc:
   api-docs:
     path: /v3/api-docs      # OpenAPI JSON 文档路径
 
+user:
+  approve:
+    phones: 13488437203,15389625076 #可通行手机号
+
