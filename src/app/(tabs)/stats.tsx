@@ -2,7 +2,7 @@
  * 攒钱记账 - 统计页
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -19,6 +19,8 @@ import { BorderRadius, Spacing, Shadows, Sizes } from '@/constants/layout';
 import { Card } from '@/components/ui';
 import { AccountBookType } from '@/types';
 import * as statisticsService from '@/services/statistics';
+import { useFocusEffect } from '@react-navigation/native';
+import Svg, { Path, Circle } from 'react-native-svg';
 
 const { width } = Dimensions.get('window');
 
@@ -46,32 +48,55 @@ const getDateRange = (filter: TimeFilter) => {
   return { startDate: fmt(startDate), endDate: fmt(endDate) };
 };
 
-// 简单饼图组件
+// 简单饼图组件 - 使用 SVG 实现正圆饼图
 const SimplePieChart: React.FC<{ data: any[] }> = ({ data }) => {
-  let currentAngle = 0;
   const total = data.reduce((s: number, i: any) => s + (i.amount || 0), 0);
+  const size = 160;
+  const radius = 70;
+  const center = size / 2;
+  const innerRadius = 35;
+
+  // 生成饼图路径
+  const createPieSlice = (startAngle: number, endAngle: number, color: string, index: number) => {
+    // 转换为弧度
+    const startRad = (startAngle - 90) * (Math.PI / 180);
+    const endRad = (endAngle - 90) * (Math.PI / 180);
+
+    const x1 = center + radius * Math.cos(startRad);
+    const y1 = center + radius * Math.sin(startRad);
+    const x2 = center + radius * Math.cos(endRad);
+    const y2 = center + radius * Math.sin(endRad);
+
+    const largeArcFlag = endAngle - startAngle > 180 ? 1 : 0;
+
+    const d = [
+      `M ${center} ${center}`,
+      `L ${x1} ${y1}`,
+      `A ${radius} ${radius} 0 ${largeArcFlag} 1 ${x2} ${y2}`,
+      'Z',
+    ].join(' ');
+
+    return <Path key={index} d={d} fill={color} />;
+  };
+
+  let currentAngle = 0;
+  const slices = data.map((item, index) => {
+    const angle = ((item.percentage || 0) / 100) * 360;
+    const startAngle = currentAngle;
+    const endAngle = currentAngle + angle;
+    currentAngle = endAngle;
+    if (angle === 0) return null;
+    return createPieSlice(startAngle, endAngle, item.color || '#6B7280', index);
+  });
 
   return (
     <View style={styles.pieChartContainer}>
-      <View style={styles.pieChart}>
-        {data.map((item: any, index: number) => {
-          const angle = ((item.percentage || 0) / 100) * 360;
-          const startAngle = currentAngle;
-          currentAngle += angle;
-          
-          return (
-            <View
-              key={item.id || index}
-              style={[
-                styles.pieSlice,
-                {
-                  backgroundColor: item.color,
-                  transform: [{ rotate: `${startAngle}deg` }],
-                },
-              ]}
-            />
-          );
-        })}
+      <View style={styles.pieChartWrapper}>
+        <Svg width={size} height={size}>
+          {slices}
+          {/* 中心白色圆形 */}
+          <Circle cx={center} cy={center} r={innerRadius} fill="#FFFFFF" />
+        </Svg>
         <View style={styles.pieCenter}>
           <Text style={styles.pieCenterAmount}>¥{total.toLocaleString('zh-CN', { minimumFractionDigits: 0 })}</Text>
           <Text style={styles.pieCenterLabel}>总支出</Text>
@@ -179,13 +204,15 @@ const SimpleBarChart: React.FC<{ timeFilter: TimeFilter; dailyStats: any[] }> = 
         {data.map((item, index) => (
           <View key={index} style={styles.barGroup}>
             <View style={styles.barsContainer}>
-              <View
-                style={[
-                  styles.bar,
-                  styles.expenseBar,
-                  { height: (item.expense / maxValue) * 100 || 2 },
-                ]}
-              />
+              {item.expense > 0 && (
+                <View
+                  style={[
+                    styles.bar,
+                    styles.expenseBar,
+                    { height: (item.expense / maxValue) * 100 },
+                  ]}
+                />
+              )}
               {item.income > 0 && (
                 <View
                   style={[
@@ -242,7 +269,12 @@ export default function StatsPage() {
     }
   }, [timeFilter, bookFilter]);
 
-  useEffect(() => { fetchStats(); }, [fetchStats]);
+  // 页面获得焦点时自动刷新数据
+  useFocusEffect(
+    useCallback(() => {
+      fetchStats();
+    }, [fetchStats])
+  );
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -480,29 +512,19 @@ const styles = StyleSheet.create({
   pieChartContainer: {
     alignItems: 'center',
   },
-  pieChart: {
+  pieChartWrapper: {
     width: 160,
     height: 160,
-    borderRadius: 80,
-    overflow: 'hidden',
     position: 'relative',
     marginBottom: Spacing.lg,
   },
-  pieSlice: {
-    position: 'absolute',
-    width: 80,
-    height: 160,
-    left: 80,
-    transformOrigin: 'left center',
-  },
   pieCenter: {
     position: 'absolute',
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: Colors.card,
-    top: 40,
-    left: 40,
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+    top: 45,
+    left: 45,
     alignItems: 'center',
     justifyContent: 'center',
   },

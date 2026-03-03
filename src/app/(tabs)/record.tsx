@@ -510,10 +510,36 @@ export default function RecordPage() {
 
         {/* 日期和账户信息 */}
         <View style={styles.infoRow}>
-          <TouchableOpacity style={styles.infoItem} onPress={() => setShowDatePicker(true)}>
-            <Text style={styles.infoLabel}>日期</Text>
-            <Text style={styles.infoValue}>{formatDateDisplay(selectedDate)} ▼</Text>
-          </TouchableOpacity>
+          {/* Web 平台使用原生 input */}
+          {Platform.OS === 'web' ? (
+            <View style={styles.infoItem}>
+              <Text style={styles.infoLabel}>日期</Text>
+              <input
+                type="date"
+                value={selectedDate.toISOString().split('T')[0]}
+                max={new Date().toISOString().split('T')[0]}
+                onChange={(e) => {
+                  const newDate = new Date(e.target.value);
+                  if (!isNaN(newDate.getTime())) {
+                    setSelectedDate(newDate);
+                  }
+                }}
+                style={{
+                  border: 'none',
+                  background: 'transparent',
+                  fontSize: 14,
+                  color: '#333',
+                  outline: 'none',
+                  cursor: 'pointer',
+                }}
+              />
+            </View>
+          ) : (
+            <TouchableOpacity style={styles.infoItem} onPress={() => setShowDatePicker(true)}>
+              <Text style={styles.infoLabel}>日期</Text>
+              <Text style={styles.infoValue}>{formatDateDisplay(selectedDate)} ▼</Text>
+            </TouchableOpacity>
+          )}
           <TouchableOpacity style={styles.infoItem} onPress={handleAccountPress}>
             <Text style={styles.infoLabel}>账户</Text>
             <Text style={styles.infoValue}>
@@ -523,8 +549,17 @@ export default function RecordPage() {
           </TouchableOpacity>
         </View>
 
-        {/* 日期选择器 */}
-        {showDatePicker && (
+        {/* 日期选择器 - Android 与 iOS 分开处理 */}
+        {showDatePicker && Platform.OS === 'android' && (
+          <DateTimePicker
+            value={selectedDate}
+            mode="date"
+            display="default"
+            onChange={handleDateChange}
+            maximumDate={new Date()}
+          />
+        )}
+        {showDatePicker && Platform.OS === 'ios' && (
           <Modal
             visible={showDatePicker}
             transparent
@@ -546,7 +581,7 @@ export default function RecordPage() {
                 <DateTimePicker
                   value={selectedDate}
                   mode="date"
-                  display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                  display="spinner"
                   onChange={handleDateChange}
                   maximumDate={new Date()}
                   locale="zh-CN"
