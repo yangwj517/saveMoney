@@ -112,7 +112,7 @@ export default function RecordsPage() {
         <View style={[styles.recordBookIndicator, { backgroundColor: bookColor }]} />
         <View style={[styles.recordCategoryIcon, { backgroundColor: record.category?.color || Colors.gray[300] }]}>
           <Text style={styles.recordCategoryEmoji}>
-            {record.category?.name?.charAt(0) || '?'}
+            {record.category?.icon || record.category?.name?.charAt(0) || '?'}
           </Text>
         </View>
         <View style={styles.recordInfo}>

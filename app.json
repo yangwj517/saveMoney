@@ -6,23 +6,54 @@
     "orientation": "portrait",
     "scheme": "money",
     "userInterfaceStyle": "light",
-    "newArchEnabled": true,
+    "newArchEnabled": false,
+    "icon": "./assets/log.png",
+    "splash": {
+      "image": "./assets/log.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#4F46E5"
+    },
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.money.app"
     },
     "android": {
-      "package": "com.money.app"
+      "package": "com.money.app",
+      "versionCode": 1,
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/log.png",
+        "backgroundColor": "#4F46E5"
+      }
     },
     "web": {
       "bundler": "metro",
       "output": "static"
     },
     "plugins": [
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "kotlinVersion": "1.9.25",
+            "usesCleartextTraffic": true
+          }
+        }
+      ],
       "expo-router"
     ],
     "experiments": {
       "typedRoutes": true
-    }
+    },
+    "extra": {
+      "author": "wenjieYang&chenghaoZhang",
+      "version": "1.0.0",
+      "router": {
+        "origin": false
+      },
+      "eas": {
+        "projectId": "c10dc15e-7740-449b-aabb-038a8cb72eb7"
+      }
+    },
+    "owner": "ywj517"
   }
 }

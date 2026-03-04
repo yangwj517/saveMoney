@@ -54,35 +54,127 @@ api.interceptors.request.use(
     if (__DEV__) {
       console.log(`[API] ${config.method?.toUpperCase()} ${config.baseURL}${config.url}`, config.data || '');
     }
+    console.log('[API Request] 发送请求:', config.url, 'Token:', accessToken ? 'exists' : 'none');
     return config;
   },
   (error) => Promise.reject(error)
 );
 
-// 响应拦截器 - 调试日志 + Token 过期自动刷新
+// 响应拦截器 - 调试日志 + Token 过期自动刷新（基于 code === 20005）
 api.interceptors.response.use(
-  (response) => {
+  async (response) => {
     if (__DEV__) {
       console.log(`[API] ✅ ${response.status} ${response.config.url}`, JSON.stringify(response.data).substring(0, 200));
     }
+    
+    // 检查响应体中的业务码是否为 20005（Token 过期）
+    const responseCode = response.data?.code;
+    console.log('[API Response] 响应码:', responseCode, 'URL:', response.config.url);
+    
+    // 如果是 20005，需要刷新 token
+    if (responseCode === TOKEN_EXPIRED_CODE) {
+      console.log('[API Response] 检测到 20005，开始处理刷新');
+      
+      const originalRequest = response.config as InternalAxiosRequestConfig & {
+        _retry?: boolean;
+      };
+      
+      if (isRefreshing) {
+        // 如果正在刷新，排队等待
+        return new Promise((resolve, reject) => {
+          failedQueue.push({ resolve, reject });
+        }).then((token) => {
+          if (originalRequest.headers) {
+            originalRequest.headers.Authorization = `Bearer ${token}`;
+          }
+          return api(originalRequest);
+        });
+      }
+      
+      originalRequest._retry = true;
+      isRefreshing = true;
+      
+      const { accessToken, refreshToken, setTokens, logout } = useAuthStore.getState();
+      
+      if (!refreshToken) {
+        logout();
+        return Promise.reject(new Error('没有 refreshToken，无法刷新'));
+      }
+      
+      try {
+        // 使用独立的 refreshApi 避免触发拦截器造成死循环
+        // 但需要手动添加旧的 token 到 header
+        console.log('[Token Refresh] 开始刷新 token...', { refreshToken: refreshToken ? 'exists' : 'missing' });
+        const refreshResponse = await refreshApi.post<ApiResponse>(
+          '/auth/token/refresh',
+          { refreshToken },
+          {
+            headers: {
+              'Authorization': `Bearer ${accessToken}`,
+            },
+          }
+        );
+        console.log('[Token Refresh] 刷新响应:', refreshResponse.data);
+        
+        // 检查刷新接口的响应码
+        if (refreshResponse.data.code !== 0) {
+          // 如果返回 20002，说明刷新失败（如 refreshToken 过期或无效）
+          if (refreshResponse.data.code === TOKEN_REFRESH_FAILED_CODE) {
+            handleTokenExpired();
+            throw new Error('登录已过期，请重新登录');
+          }
+          throw new Error(refreshResponse.data.message || 'Token 刷新失败');
+        }
+        
+        const { token: newToken, refreshToken: newRefreshToken } =
+          refreshResponse.data.data;
+        setTokens(newToken, newRefreshToken);
+        processQueue(null, newToken);
+        
+        if (originalRequest.headers) {
+          originalRequest.headers.Authorization = `Bearer ${newToken}`;
+        }
+        
+        // 重试原请求
+        console.log('[Token Refresh] 重试原请求');
+        return api(originalRequest);
+      } catch (refreshError) {
+        // 如果是登录过期错误，直接抛出
+        if ((refreshError as any).message === '登录已过期，请重新登录') {
+          throw refreshError;
+        }
+        processQueue(refreshError, null);
+        logout();
+        return Promise.reject(refreshError);
+      } finally {
+        isRefreshing = false;
+      }
+    }
+    
     return response;
   },
   async (error: AxiosError<ApiResponse>) => {
+    console.log('[API Error Handler] 进入错误处理器');
+    
     if (__DEV__) {
       console.log(`[API] ❌ ${error.config?.url}`, error.response?.status, JSON.stringify(error.response?.data || error.message).substring(0, 200));
     }
-
+    
     const originalRequest = error.config as InternalAxiosRequestConfig & {
       _retry?: boolean;
     };
-
-    // 如果是 401 且不是刷新 Token 请求本身
+    
+    // 检查响应体中的 code 是否为 20005（Token 过期）
+    const responseCode = error.response?.data?.code;
+    console.log('[API Interceptor] 错误处理器响应码:', responseCode, 'URL:', originalRequest.url);
+    
     if (
-      error.response?.status === 401 &&
+      responseCode === TOKEN_EXPIRED_CODE &&
       !originalRequest._retry &&
       !originalRequest.url?.includes('/auth/token/refresh') &&
       !originalRequest.url?.includes('/auth/login')
     ) {
+      console.log('[API Interceptor] 错误处理器检测到 20005，开始处理刷新');
       if (isRefreshing) {
         // 如果正在刷新，排队等待
         return new Promise((resolve, reject) => {
@@ -98,7 +190,7 @@ api.interceptors.response.use(
       originalRequest._retry = true;
       isRefreshing = true;
 
-      const { refreshToken, setTokens, logout } = useAuthStore.getState();
+      const { accessToken, refreshToken, setTokens, logout } = useAuthStore.getState();
 
       if (!refreshToken) {
         logout();
@@ -106,10 +198,29 @@ api.interceptors.response.use(
       }
 
       try {
-        const response = await axios.post<ApiResponse>(
-          `${BASE_URL}/auth/token/refresh`,
-          { refreshToken }
+        // 使用独立的 refreshApi 避免触发拦截器造成死循环
+        // 但需要手动添加旧的 token 到 header
+        console.log('[Token Refresh] 开始刷新 token...', { refreshToken: refreshToken ? 'exists' : 'missing' });
+        const response = await refreshApi.post<ApiResponse>(
+          '/auth/token/refresh',
+          { refreshToken },
+          {
+            headers: {
+              'Authorization': `Bearer ${accessToken}`,
+            },
+          }
         );
+        console.log('[Token Refresh] 刷新响应:', response.data);
+
+        // 检查刷新接口的响应码
+        if (response.data.code !== 0) {
+          // 如果返回 20002，说明刷新失败（如 refreshToken 过期或无效）
+          if (response.data.code === TOKEN_REFRESH_FAILED_CODE) {
+            handleTokenExpired();
+            throw new Error('登录已过期，请重新登录');
+          }
+          throw new Error(response.data.message || 'Token 刷新失败');
+        }
 
         const { token: newToken, refreshToken: newRefreshToken } =
           response.data.data;
@@ -121,6 +232,10 @@ api.interceptors.response.use(
         }
         return api(originalRequest);
       } catch (refreshError) {
+        // 如果是登录过期错误，直接抛出
+        if ((refreshError as any).message === '登录已过期，请重新登录') {
+          throw refreshError;
+        }
         processQueue(refreshError, null);
         logout();
         return Promise.reject(refreshError);
@@ -134,7 +249,18 @@ api.interceptors.response.use(
 );
 
 // Token 过期错误码
-const TOKEN_EXPIRED_CODE = 20002;
+const TOKEN_EXPIRED_CODE = 20005;
+// Token 刷新失败错误码
+const TOKEN_REFRESH_FAILED_CODE = 20002;
+
+// 创建 Axios 实例用于刷新 Token（不经过拦截器）
+const refreshApi = axios.create({
+  baseURL: BASE_URL,
+  timeout: 15000,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+});
 
 /**
  * 处理登录过期，跳转到登录页
@@ -151,7 +277,8 @@ const handleTokenExpired = () => {
 /**
  * 解包 API 响应，提取 data 字段
  * 如果 code !== 0，抛出错误
- * 如果 code === 20002，自动跳转登录页
+ * 注意：code === 20005 会由拦截器自动处理刷新，不会到这里
+ * 只有 code === 20002（刷新失败）才会跳转登录页
  */
 export async function unwrap<T>(promise: Promise<{ data: ApiResponse<T> }>): Promise<T> {
   let response;
@@ -161,11 +288,14 @@ export async function unwrap<T>(promise: Promise<{ data: ApiResponse<T> }>): Pro
     // axios 网络 / HTTP 错误
     if (error.response) {
       const body = error.response.data;
-      // 检查是否是 token 过期错误
-      if (body && body.code === TOKEN_EXPIRED_CODE) {
+      
+      // 注意：20005 已经被拦截器处理并尝试刷新，不会进入这里
+      // 只有刷新失败返回 20002 才会进入这里
+      if (body && body.code === TOKEN_REFRESH_FAILED_CODE) {
         handleTokenExpired();
         throw new Error('登录已过期，请重新登录');
       }
+      
       if (body && body.message) {
         throw new Error(body.message);
       }
@@ -187,8 +317,9 @@ export async function unwrap<T>(promise: Promise<{ data: ApiResponse<T> }>): Pro
     throw new Error('服务器返回空响应');
   }
 
-  // 检查是否是 token 过期错误
-  if (apiResponse.code === TOKEN_EXPIRED_CODE) {
+  // 注意：20005 已经被拦截器处理并尝试刷新，不会进入这里
+  // 只有刷新失败返回 20002 才会进入这里
+  if (apiResponse.code === TOKEN_REFRESH_FAILED_CODE) {
     handleTokenExpired();
     throw new Error('登录已过期，请重新登录');
   }
